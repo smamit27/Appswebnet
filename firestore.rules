@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper: check if user is authenticated (non-anonymous)
+    function isSignedIn() {
+      return request.auth != null && !request.auth.token.firebase.sign_in_provider.matches('anonymous');
+    }
+    // Helper: check if user is in the allowed list
+    function isAuthorized() {
+      return isSignedIn() && request.auth.token.email in [
+        'smamit27@gmail.com',
+        'sweta@gmail.com',
+        'amishi@gmail.com'
+      ];
+    }
+
+    // Finance transactions — only authorized users
+    match /finance/sweta/transactions/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+
+    // Gym activity
+    match /activities/amishi/gym/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+
+    // Daily activity
+    match /activities/amishi/daily/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isAuthorized();
+    }
+
+    // Family events
+    match /family/events/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+
+    // Family members profile
+    match /family/members/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isAuthorized();
+    }
+  }
+}
