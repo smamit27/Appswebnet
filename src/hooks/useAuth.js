@@ -11,6 +11,7 @@ const ALLOWED_EMAILS = [
   'sweta@gmail.com',
   'smamit27@gmail.com',
   'amishi@gmail.com',
+  'amit@gmail.com',
 ];
 
 export function useAuth() {

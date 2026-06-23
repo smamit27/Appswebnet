@@ -6,12 +6,12 @@ import { useAuth } from './hooks/useAuth.js';
 import { useCollection } from './hooks/useCollection.js';
 
 // Organisms
-import AuthModal        from './components/organisms/AuthModal.jsx';
+import AuthModal         from './components/organisms/AuthModal.jsx';
 import OverviewDashboard from './components/organisms/OverviewDashboard.jsx';
-import SwetaFinance     from './components/organisms/SwetaFinance.jsx';
-import AmishiGym        from './components/organisms/AmishiGym.jsx';
-import AmishiActivity   from './components/organisms/AmishiActivity.jsx';
-import FamilyCalendar   from './components/organisms/FamilyCalendar.jsx';
+import FinancePage       from './components/organisms/FinancePage.jsx';
+import AmishiGym         from './components/organisms/AmishiGym.jsx';
+import AmishiActivity    from './components/organisms/AmishiActivity.jsx';
+import FamilyCalendar    from './components/organisms/FamilyCalendar.jsx';
 
 import { db } from './firebase.js';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -32,7 +32,8 @@ const ICONS = {
   ),
   gym: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
+      <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
+      <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
       <line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/>
     </svg>
   ),
@@ -49,23 +50,27 @@ const ICONS = {
   ),
 };
 
-/* ── Mock Fallback Data ─────────────────────────────────────────── */
-const MOCK_FINANCE = [
-  { id: 'm1', date: new Date().toISOString().slice(0,7)+'-01', type: 'Income',  category: 'Salary',    amount: 85000, note: 'June salary' },
-  { id: 'm2', date: new Date().toISOString().slice(0,7)+'-05', type: 'Expense', category: 'Groceries', amount: 4500,  note: 'D-Mart' },
-  { id: 'm3', date: new Date().toISOString().slice(0,7)+'-10', type: 'Expense', category: 'Utilities',  amount: 2200,  note: 'Electricity + internet' },
-  { id: 'm4', date: new Date().toISOString().slice(0,7)+'-15', type: 'Expense', category: 'Dining',    amount: 1800,  note: 'Family dinner' },
-  { id: 'm5', date: new Date().toISOString().slice(0,7)+'-20', type: 'Income',  category: 'Freelance', amount: 15000, note: 'Project payment' },
+/* ── Mock fallback data ─────────────────────────────────────────── */
+const thisMonth = new Date().toISOString().slice(0, 7);
+const MOCK_GYM  = [
+  { id: 'g1', date: new Date().toISOString().slice(0, 10), type: 'Strength', duration: 50, calories: 320, notes: 'Chest + triceps' },
+  { id: 'g2', date: new Date(Date.now() - 86400000).toISOString().slice(0, 10), type: 'Cardio', duration: 35, calories: 280, notes: '5km run' },
+  { id: 'g3', date: new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10), type: 'Yoga', duration: 45, calories: 150, notes: 'Morning yoga flow' },
 ];
-const MOCK_GYM = [
-  { id: 'g1', date: new Date().toISOString().slice(0,10), type: 'Strength', duration: 50, calories: 320, notes: 'Chest + triceps' },
-  { id: 'g2', date: new Date(Date.now()-86400000).toISOString().slice(0,10), type: 'Cardio', duration: 35, calories: 280, notes: '5km run' },
-  { id: 'g3', date: new Date(Date.now()-2*86400000).toISOString().slice(0,10), type: 'Yoga', duration: 45, calories: 150, notes: 'Morning yoga flow' },
-];
-const MOCK_ACTIVITY = [];
 const MOCK_CALENDAR = [
-  { id: 'c1', date: new Date(Date.now()+3*86400000).toISOString().slice(0,10), title: "Amishi's School Play", tag: 'amishi', time: '18:00', note: 'Annual day event' },
-  { id: 'c2', date: new Date(Date.now()+7*86400000).toISOString().slice(0,10), title: 'Family Dinner Out',   tag: 'family', time: '19:30', note: 'Birthday celebration' },
+  { id: 'c1', date: new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10), title: "Amishi's School Play", tag: 'amishi', time: '18:00', note: 'Annual day' },
+  { id: 'c2', date: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10), title: 'Family Dinner',        tag: 'family', time: '19:30', note: 'Birthday' },
+];
+
+/* ── Sidebar nav structure ──────────────────────────────────────── */
+const NAV = [
+  { group: 'Home',   items: [{ id: 'overview',  label: 'Overview'       }] },
+  { group: 'Finance',items: [{ id: 'finance',   label: 'Income & Expenses' }] },
+  { group: 'Amishi', items: [
+    { id: 'gym',      label: 'Gym Activity'  },
+    { id: 'activity', label: 'Daily Activity' },
+  ]},
+  { group: 'Family', items: [{ id: 'calendar',  label: 'Family Calendar' }] },
 ];
 
 export default function App() {
@@ -76,11 +81,13 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
-  // Firestore collections
-  const finance  = useCollection('finance/sweta/transactions',  MOCK_FINANCE,  user);
-  const gym      = useCollection('activities/amishi/gym',       MOCK_GYM,      user);
-  const activity = useCollection('activities/amishi/daily',     MOCK_ACTIVITY, user, 'date', 'desc');
-  const calendar = useCollection('family/events',               MOCK_CALENDAR, user, 'date', 'asc');
+  // Real-time Firestore collections (for Overview + Activity + Calendar + Gym)
+  const gym      = useCollection('activities/amishi/gym',   MOCK_GYM,      user);
+  const activity = useCollection('activities/amishi/daily', [],             user, 'date', 'desc');
+  const calendar = useCollection('family/events',           MOCK_CALENDAR, user, 'date', 'asc');
+
+  // For the Overview we need a quick summary of finance — fetch latest month snapshot
+  const [financeSnap, setFinanceSnap] = useState({ swetaIncome: 0, swetaExpense: 0, amitIncome: 0, amitExpense: 0 });
 
   const handleTabChange = useCallback((tabId) => {
     if (tabId === activeTab) return;
@@ -92,26 +99,19 @@ export default function App() {
     }, 160);
   }, [activeTab]);
 
-  // Save activity day (uses doc set instead of addDoc)
   const handleSaveActivityDay = async (data) => {
     if (!db || !user) return;
     const ref = doc(db, 'activities/amishi/daily', data.date);
     await setDoc(ref, { ...data, updatedAt: serverTimestamp(), createdBy: user.uid }, { merge: true });
   };
 
-  const NAV_ITEMS = [
-    { id: 'overview', label: 'Overview',         group: 'Home' },
-    { id: 'finance',  label: 'Sweta – Finance',  group: 'Sweta' },
-    { id: 'gym',      label: 'Amishi – Gym',      group: 'Amishi' },
-    { id: 'activity', label: 'Amishi – Activity', group: 'Amishi' },
-    { id: 'calendar', label: 'Family Calendar',   group: 'Family' },
-  ];
-
-  const activeLabel = NAV_ITEMS.find(n => n.id === activeTab)?.label || '';
-
+  const activeLabel = NAV.flatMap(g => g.items).find(n => n.id === activeTab)?.label || '';
   const userInitials = user && !user.isAnonymous
     ? (user.displayName || user.email || 'U').slice(0, 2).toUpperCase()
     : '?';
+
+  // Finance source indicator
+  const financeSource = 'firebase';
 
   return (
     <>
@@ -120,11 +120,11 @@ export default function App() {
         <div className="backdrop backdrop--bottom" />
         <div className="backdrop backdrop--purple" />
 
-        {/* Mobile overlay */}
         {isSidebarOpen && <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)} />}
 
         {/* ── Sidebar ── */}
         <aside className={`sidebar ${isSidebarOpen ? 'sidebar--open' : ''} ${isSidebarCollapsed ? 'sidebar--collapsed' : ''}`}>
+
           {/* Brand */}
           <div className="sidebar__brand">
             <div className="sidebar__logo">🏠</div>
@@ -140,19 +140,15 @@ export default function App() {
               title={isSidebarCollapsed ? 'Expand' : 'Collapse'}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="3" y1="12" x2="21" y2="12"/>
-                <line x1="3" y1="6"  x2="21" y2="6"/>
-                <line x1="3" y1="18" x2="21" y2="18"/>
+                <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
               </svg>
             </button>
           </div>
 
-          {/* User */}
+          {/* User card */}
           <div className="sidebar__user" onClick={() => setIsAuthModalOpen(true)} title="Account">
             <div className="sidebar__avatar">
-              {user?.photoURL
-                ? <img src={user.photoURL} alt="avatar" />
-                : userInitials}
+              {user?.photoURL ? <img src={user.photoURL} alt="avatar" /> : userInitials}
             </div>
             {!isSidebarCollapsed && (
               <div>
@@ -160,18 +156,18 @@ export default function App() {
                   {user && !user.isAnonymous ? (user.displayName?.split(' ')[0] || 'User') : 'Guest'}
                 </div>
                 <div className="sidebar__user-role">
-                  {isAuthorized ? '✅ Full Access' : user && !user.isAnonymous ? '⚠️ Restricted' : 'Sign in to edit'}
+                  {isAuthorized ? '✅ Full Access' : user && !user.isAnonymous ? '⚠️ Restricted' : 'Click to sign in'}
                 </div>
               </div>
             )}
           </div>
 
-          {/* Nav */}
+          {/* Navigation */}
           <nav className="sidebar__nav" role="tablist" aria-orientation="vertical">
-            {['Home', 'Sweta', 'Amishi', 'Family'].map(group => (
+            {NAV.map(({ group, items }) => (
               <div key={group}>
                 <div className="sidebar-group-header">{group}</div>
-                {NAV_ITEMS.filter(n => n.group === group).map(item => (
+                {items.map(item => (
                   <button
                     key={item.id}
                     id={`tab-${item.id}`}
@@ -191,17 +187,18 @@ export default function App() {
             ))}
           </nav>
 
-          {/* Bottom: Firebase sync status */}
+          {/* Bottom sync indicator */}
           {!isSidebarCollapsed && (
-            <div style={{ marginTop: 'auto', fontSize: '0.72rem', color: 'rgba(255,255,255,0.35)', textAlign: 'center', padding: '8px 0' }}>
-              {finance.source === 'firebase' ? '🟢 Firebase synced' : '🟡 Preview mode'}
+            <div style={{ marginTop: 'auto', fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', textAlign: 'center', padding: '8px 0', lineHeight: 1.5 }}>
+              {user && !user.isAnonymous ? '🟢 Firebase synced' : '🟡 Preview mode'}
+              <br />Sweta · Amit · Amishi
             </div>
           )}
         </aside>
 
         {/* ── Main Panel ── */}
         <main className="main-panel">
-          {/* Mobile Header */}
+          {/* Mobile header */}
           <div className="mobile-header">
             <button className="mobile-menu-toggle" onClick={() => setIsSidebarOpen(true)} aria-label="Open menu">
               <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -213,7 +210,6 @@ export default function App() {
             <h2>{activeLabel}</h2>
           </div>
 
-          {/* Tab Content */}
           <div
             id={`panel-${activeTab}`}
             className={`tab-content-panel ${isTransitioning ? 'tab-content-panel--exit' : ''}`}
@@ -222,20 +218,17 @@ export default function App() {
           >
             {activeTab === 'overview' && (
               <OverviewDashboard
-                financeItems={finance.items}
+                financeItems={[]}
                 gymItems={gym.items}
                 activityItems={activity.items}
                 calendarItems={calendar.items}
               />
             )}
+
             {activeTab === 'finance' && (
-              <SwetaFinance
-                items={finance.items}
-                isAuthorized={isAuthorized}
-                onAdd={finance.add}
-                onDelete={finance.remove}
-              />
+              <FinancePage isAuthorized={isAuthorized} />
             )}
+
             {activeTab === 'gym' && (
               <AmishiGym
                 items={gym.items}
@@ -244,6 +237,7 @@ export default function App() {
                 onDelete={gym.remove}
               />
             )}
+
             {activeTab === 'activity' && (
               <AmishiActivity
                 items={activity.items}
@@ -251,6 +245,7 @@ export default function App() {
                 onSaveDay={handleSaveActivityDay}
               />
             )}
+
             {activeTab === 'calendar' && (
               <FamilyCalendar
                 items={calendar.items}

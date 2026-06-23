@@ -1,44 +1,50 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper: check if user is authenticated (non-anonymous)
-    function isSignedIn() {
-      return request.auth != null && !request.auth.token.firebase.sign_in_provider.matches('anonymous');
-    }
-    // Helper: check if user is in the allowed list
+
+    // Allowed family emails
     function isAuthorized() {
-      return isSignedIn() && request.auth.token.email in [
-        'smamit27@gmail.com',
-        'sweta@gmail.com',
-        'amishi@gmail.com'
-      ];
+      return request.auth != null
+        && !request.auth.token.firebase.sign_in_provider.matches('anonymous')
+        && request.auth.token.email in [
+          'smamit27@gmail.com',
+          'sweta@gmail.com',
+          'amishi@gmail.com',
+          'amit@gmail.com'
+        ];
     }
 
-    // Finance transactions — only authorized users
-    match /finance/sweta/transactions/{docId} {
+    // Sweta's monthly finance records
+    match /financeMonthly_sweta/{docId} {
       allow read: if request.auth != null;
-      allow write, delete: if isAuthorized();
+      allow write: if isAuthorized();
     }
 
-    // Gym activity
+    // Amit's monthly finance records
+    match /financeMonthly_amit/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isAuthorized();
+    }
+
+    // Amishi – Gym activity
     match /activities/amishi/gym/{docId} {
       allow read: if request.auth != null;
       allow write, delete: if isAuthorized();
     }
 
-    // Daily activity
+    // Amishi – Daily activity
     match /activities/amishi/daily/{docId} {
       allow read: if request.auth != null;
       allow write: if isAuthorized();
     }
 
-    // Family events
+    // Family events calendar
     match /family/events/{docId} {
       allow read: if request.auth != null;
       allow write, delete: if isAuthorized();
     }
 
-    // Family members profile
+    // Family member profiles
     match /family/members/{docId} {
       allow read: if request.auth != null;
       allow write: if isAuthorized();
