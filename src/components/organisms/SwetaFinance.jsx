@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import SectionCard from '../molecules/SectionCard.jsx';
 import StatusPill from '../atoms/StatusPill.jsx';
 import ProgressBar from '../atoms/ProgressBar.jsx';
@@ -288,7 +289,7 @@ export default function SwetaFinance({ items, isAuthorized, onAdd, onDelete }) {
       </SectionCard>
 
       {/* Add Transaction Modal */}
-      {showForm && (
+      {showForm && createPortal(
         <div className="modal-backdrop" onClick={() => setShowForm(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal__header">
@@ -334,7 +335,8 @@ export default function SwetaFinance({ items, isAuthorized, onAdd, onDelete }) {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

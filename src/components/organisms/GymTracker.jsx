@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import SectionCard from '../molecules/SectionCard.jsx';
 import StatusPill from '../atoms/StatusPill.jsx';
 import ProgressBar from '../atoms/ProgressBar.jsx';
@@ -47,7 +48,7 @@ function getWeekDates() {
   return dates;
 }
 
-export default function AmishiGym({ items, isAuthorized, onAdd, onDelete }) {
+export default function GymTracker({ name, items, isAuthorized, onAdd, onDelete }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm]         = useState(EMPTY_FORM);
   const [saving, setSaving]     = useState(false);
@@ -123,7 +124,7 @@ export default function AmishiGym({ items, isAuthorized, onAdd, onDelete }) {
       <div className="page-header">
         <div className="page-header__copy">
           <p className="page-header__eyebrow">Activity Tracker</p>
-          <h1>Amishi's Gym Activity 🏋️</h1>
+          <h1>{name}'s Gym Activity 🏋️</h1>
           <p className="page-header__sub">Log workouts, track streaks, and hit your weekly goals.</p>
         </div>
         <div className="page-header__actions">
@@ -295,7 +296,7 @@ export default function AmishiGym({ items, isAuthorized, onAdd, onDelete }) {
       </SectionCard>
 
       {/* Log Workout Modal */}
-      {showForm && (
+      {showForm && createPortal(
         <div className="modal-backdrop" onClick={() => setShowForm(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal__header">
@@ -340,7 +341,8 @@ export default function AmishiGym({ items, isAuthorized, onAdd, onDelete }) {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

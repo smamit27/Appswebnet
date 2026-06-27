@@ -9,6 +9,7 @@ import { auth, googleProvider } from '../firebase.js';
 
 const ALLOWED_EMAILS = [
   'sweta@gmail.com',
+  'swetank.suman@gmail.com',
   'smamit27@gmail.com',
   'amishi@gmail.com',
   'amit@gmail.com',

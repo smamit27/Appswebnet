@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 
 export default function AuthModal({ isOpen, onClose, user, isAuthorized, onSignIn, onSignOut }) {
   const [loading, setLoading] = useState(false);
@@ -26,7 +27,7 @@ export default function AuthModal({ isOpen, onClose, user, isAuthorized, onSignI
 
   const isLoggedIn = user && !user.isAnonymous;
 
-  return (
+  return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal__header">
@@ -44,25 +45,36 @@ export default function AuthModal({ isOpen, onClose, user, isAuthorized, onSignI
                   ? <img src={user.photoURL} alt="avatar" style={{ width: 64, height: 64, borderRadius: '50%', margin: '0 auto' }} />
                   : '👤'}
               </div>
-              <h2>Hello, {user.displayName?.split(' ')[0] || 'User'}!</h2>
-              <p style={{ marginBottom: 8 }}>{user.email}</p>
-              {isAuthorized
-                ? <p style={{ color: 'var(--pine)', fontWeight: 600, marginBottom: 20 }}>✅ Full access granted</p>
-                : <p style={{ color: 'var(--coral)', fontWeight: 600, marginBottom: 20 }}>⚠️ This email is not on the access list</p>
-              }
-              <button className="btn btn--danger" style={{ width: '100%' }} onClick={handleSignOut}>
+              <div className="auth-card__title">
+                {user.displayName || user.email}
+              </div>
+              <div style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: 20 }}>
+                {isAuthorized ? '✅ Authorized Access' : '⚠️ Guest Access'}
+              </div>
+
+              {!isAuthorized && (
+                <div style={{ background: 'rgba(255,170,0,0.1)', border: '1px solid var(--amber)', padding: 12, borderRadius: 8, fontSize: '0.8rem', color: 'var(--amber)', marginBottom: 20, textAlign: 'left' }}>
+                  Your Google account is signed in, but it does not have permission to view or edit the family dashboard data. Please ask Amit or Sweta for access.
+                </div>
+              )}
+
+              <button className="btn btn--outline" onClick={handleSignOut} style={{ width: '100%', justifyContent: 'center' }}>
                 Sign Out
               </button>
             </>
           ) : (
             <>
-              <div className="auth-card__icon">🏠</div>
-              <h2>Family Dashboard</h2>
-              <p>Sign in with your Google account to access your personal data, add transactions, and track activities.</p>
-              {error && <p style={{ color: 'var(--coral)', marginBottom: 12 }}>{error}</p>}
+              <div className="auth-card__icon" style={{ fontSize: '3rem' }}>🔒</div>
+              <div className="auth-card__title">Family Dashboard</div>
+              <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: 24, lineHeight: 1.4 }}>
+                Sign in with your Google account to access your personalized data, trackers, and projections.
+              </p>
+              
+              {error && <div style={{ color: 'var(--rose)', fontSize: '0.8rem', marginBottom: 16 }}>{error}</div>}
+
               <button
                 className="btn btn--google"
-                style={{ width: '100%', justifyContent: 'center', gap: 10, marginBottom: 12 }}
+                style={{ width: '100%', justifyContent: 'center', gap: 10, height: 44 }}
                 onClick={handleSignIn}
                 disabled={loading}
               >

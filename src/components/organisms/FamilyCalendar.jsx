@@ -1,10 +1,17 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import SectionCard from '../molecules/SectionCard.jsx';
 
 const TAGS = [
   { value: 'family', label: '🏠 Family', cls: 'cal-event--family' },
   { value: 'sweta',  label: '💼 Sweta',  cls: 'cal-event--sweta' },
   { value: 'amishi', label: '🌟 Amishi', cls: 'cal-event--amishi' },
+];
+
+const ANNUAL_BIRTHDAYS = [
+  { month: 9, day: 27, title: "Amit's Birthday 🎂", tag: 'family' },
+  { month: 10, day: 24, title: "Sweta's Birthday 🎂", tag: 'sweta' },
+  { month: 3, day: 24, title: "Amishi's Birthday 🎂", tag: 'amishi' }
 ];
 
 const DAYS_HEADER = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -42,10 +49,27 @@ export default function FamilyCalendar({ items, isAuthorized, onAdd, onDelete })
 
   const todayStr = today.toISOString().slice(0, 10);
 
+  const mergedEvents = useMemo(() => {
+    const all = [...items];
+    const currentYear = today.getFullYear();
+    ANNUAL_BIRTHDAYS.forEach(bday => {
+      all.push({
+        id: `bday-${bday.tag}-${currentYear}`,
+        title: bday.title,
+        date: `${currentYear}-${String(bday.month).padStart(2, '0')}-${String(bday.day).padStart(2, '0')}`,
+        time: '',
+        tag: bday.tag,
+        isStatic: true,
+        note: 'Annual Event'
+      });
+    });
+    return all;
+  }, [items]);
+
   const cells = useMemo(() => buildCalendarDays(viewYear, viewMonth), [viewYear, viewMonth]);
 
   const eventsForDate = (dateStr) =>
-    dateStr ? items.filter(e => e.date === dateStr) : [];
+    dateStr ? mergedEvents.filter(e => e.date === dateStr) : [];
 
   const prevMonth = () => {
     if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
@@ -73,10 +97,10 @@ export default function FamilyCalendar({ items, isAuthorized, onAdd, onDelete })
 
   // Upcoming events
   const upcoming = useMemo(() =>
-    [...items]
+    [...mergedEvents]
       .filter(e => e.date >= todayStr)
       .sort((a, b) => a.date > b.date ? 1 : -1),
-    [items, todayStr]
+    [mergedEvents, todayStr]
   );
 
   const monthLabel = new Date(viewYear, viewMonth).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
@@ -178,7 +202,7 @@ export default function FamilyCalendar({ items, isAuthorized, onAdd, onDelete })
                       </div>
                       {ev.note && <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginTop: 4 }}>{ev.note}</div>}
                     </div>
-                    {isAuthorized && (
+                    {isAuthorized && !ev.isStatic && (
                       <button className="btn btn--danger btn--sm btn--icon" onClick={() => onDelete(ev.id)} title="Delete">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
                       </button>
@@ -192,7 +216,7 @@ export default function FamilyCalendar({ items, isAuthorized, onAdd, onDelete })
       </div>
 
       {/* Add Event Modal */}
-      {showForm && (
+      {showForm && createPortal(
         <div className="modal-backdrop" onClick={() => setShowForm(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal__header">
@@ -238,7 +262,8 @@ export default function FamilyCalendar({ items, isAuthorized, onAdd, onDelete })
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

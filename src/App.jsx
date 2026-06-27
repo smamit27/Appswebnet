@@ -9,9 +9,13 @@ import { useCollection } from './hooks/useCollection.js';
 import AuthModal         from './components/organisms/AuthModal.jsx';
 import OverviewDashboard from './components/organisms/OverviewDashboard.jsx';
 import FinancePage       from './components/organisms/FinancePage.jsx';
-import AmishiGym         from './components/organisms/AmishiGym.jsx';
+import GymTracker        from './components/organisms/GymTracker.jsx';
 import AmishiActivity    from './components/organisms/AmishiActivity.jsx';
+import AmishiFees        from './components/organisms/AmishiFees.jsx';
+import DietPlan          from './components/organisms/DietPlan.jsx';
 import FamilyCalendar    from './components/organisms/FamilyCalendar.jsx';
+import CleaningSchedule  from './components/organisms/CleaningSchedule.jsx';
+import PurchasesTracker  from './components/organisms/PurchasesTracker.jsx';
 
 import { db } from './firebase.js';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -37,6 +41,20 @@ const ICONS = {
       <line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/>
     </svg>
   ),
+  amitGym: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
+      <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
+      <line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/>
+    </svg>
+  ),
+  swetaGym: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
+      <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
+      <line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/>
+    </svg>
+  ),
   activity: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -48,29 +66,58 @@ const ICONS = {
       <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
     </svg>
   ),
+  cleaning: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16Z"/>
+      <path d="M12 12v6"/><path d="M12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/>
+    </svg>
+  ),
+  purchases: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+    </svg>
+  ),
+  fees: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
+      <path d="M6 12v5c3 3 9 3 12 0v-5"/>
+    </svg>
+  ),
+  diet: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/>
+      <path d="M7 2v20"/>
+      <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>
+    </svg>
+  ),
 };
 
-/* ── Mock fallback data ─────────────────────────────────────────── */
-const thisMonth = new Date().toISOString().slice(0, 7);
-const MOCK_GYM  = [
-  { id: 'g1', date: new Date().toISOString().slice(0, 10), type: 'Strength', duration: 50, calories: 320, notes: 'Chest + triceps' },
-  { id: 'g2', date: new Date(Date.now() - 86400000).toISOString().slice(0, 10), type: 'Cardio', duration: 35, calories: 280, notes: '5km run' },
-  { id: 'g3', date: new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10), type: 'Yoga', duration: 45, calories: 150, notes: 'Morning yoga flow' },
-];
-const MOCK_CALENDAR = [
-  { id: 'c1', date: new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10), title: "Amishi's School Play", tag: 'amishi', time: '18:00', note: 'Annual day' },
-  { id: 'c2', date: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10), title: 'Family Dinner',        tag: 'family', time: '19:30', note: 'Birthday' },
-];
+/* ── No Mock fallback data ─────────────────────────────────────────── */
 
 /* ── Sidebar nav structure ──────────────────────────────────────── */
 const NAV = [
   { group: 'Home',   items: [{ id: 'overview',  label: 'Overview'       }] },
-  { group: 'Finance',items: [{ id: 'finance',   label: 'Income & Expenses' }] },
-  { group: 'Amishi', items: [
-    { id: 'gym',      label: 'Gym Activity'  },
-    { id: 'activity', label: 'Daily Activity' },
+  { group: 'Finance',items: [
+    { id: 'finance',   label: 'Income & Expenses' },
+    { id: 'purchases', label: 'Purchases Tracker' }
+  ] },
+  { group: 'Amit', items: [
+    { id: 'amitGym',  label: 'Gym Activity' },
+    { id: 'amitDiet', label: 'Diet Plan', iconId: 'diet' }
   ]},
-  { group: 'Family', items: [{ id: 'calendar',  label: 'Family Calendar' }] },
+  { group: 'Sweta', items: [
+    { id: 'swetaGym', label: 'Gym Activity' },
+    { id: 'swetaDiet', label: 'Diet Plan', iconId: 'diet' }
+  ]},
+  { group: 'Amishi', items: [
+    { id: 'activity', label: 'Daily Activity' },
+    { id: 'fees',     label: 'School Fees' }
+  ]},
+  { group: 'Family', items: [
+    { id: 'calendar',  label: 'Family Calendar' },
+    { id: 'cleaning',  label: 'Cleaning Schedule' }
+  ] },
 ];
 
 export default function App() {
@@ -80,11 +127,14 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [feesSession, setFeesSession]         = useState('2026-27');
 
-  // Real-time Firestore collections (for Overview + Activity + Calendar + Gym)
-  const gym      = useCollection('activities/amishi/gym',   MOCK_GYM,      user);
-  const activity = useCollection('activities/amishi/daily', [],             user, 'date', 'desc');
-  const calendar = useCollection('family/events',           MOCK_CALENDAR, user, 'date', 'asc');
+  // Real-time Firestore collections
+  const amitGym  = useCollection('activities/amit/gym',     [],   user);
+  const swetaGym = useCollection('activities/sweta/gym',    [],   user);
+  const activity = useCollection('activities/amishi/daily', [],   user, 'date', 'desc');
+  const fees     = useCollection(feesSession === '2026-27' ? 'activities/amishi/fees' : `activities/amishi/fees_${feesSession.replace('-', '_')}`,  [],   user, 'id', 'asc');
+  const calendar = useCollection('familyEvents',            [],   user, 'date', 'asc');
 
   // For the Overview we need a quick summary of finance — fetch latest month snapshot
   const [financeSnap, setFinanceSnap] = useState({ swetaIncome: 0, swetaExpense: 0, amitIncome: 0, amitExpense: 0 });
@@ -102,6 +152,13 @@ export default function App() {
   const handleSaveActivityDay = async (data) => {
     if (!db || !user) return;
     const ref = doc(db, 'activities/amishi/daily', data.date);
+    await setDoc(ref, { ...data, updatedAt: serverTimestamp(), createdBy: user.uid }, { merge: true });
+  };
+
+  const handleSaveFeePayment = async (data) => {
+    if (!db || !user) return;
+    const collectionPath = feesSession === '2026-27' ? 'activities/amishi/fees' : `activities/amishi/fees_${feesSession.replace('-', '_')}`;
+    const ref = doc(db, collectionPath, data.id);
     await setDoc(ref, { ...data, updatedAt: serverTimestamp(), createdBy: user.uid }, { merge: true });
   };
 
@@ -179,7 +236,7 @@ export default function App() {
                     onClick={() => handleTabChange(item.id)}
                     title={isSidebarCollapsed ? item.label : ''}
                   >
-                    <span className="sidebar-item__icon">{ICONS[item.id]}</span>
+                    <span className="sidebar-item__icon">{ICONS[item.iconId || item.id]}</span>
                     {!isSidebarCollapsed && <span className="sidebar-item__label">{item.label}</span>}
                   </button>
                 ))}
@@ -219,7 +276,7 @@ export default function App() {
             {activeTab === 'overview' && (
               <OverviewDashboard
                 financeItems={[]}
-                gymItems={gym.items}
+                gymItems={[...amitGym.items, ...swetaGym.items]}
                 activityItems={activity.items}
                 calendarItems={calendar.items}
               />
@@ -229,13 +286,28 @@ export default function App() {
               <FinancePage isAuthorized={isAuthorized} />
             )}
 
-            {activeTab === 'gym' && (
-              <AmishiGym
-                items={gym.items}
+            {activeTab === 'amitGym' && (
+              <GymTracker
+                name="Amit"
+                items={amitGym.items}
                 isAuthorized={isAuthorized}
-                onAdd={gym.add}
-                onDelete={gym.remove}
+                onAdd={amitGym.add}
+                onDelete={amitGym.remove}
               />
+            )}
+
+            {activeTab === 'swetaGym' && (
+              <GymTracker
+                name="Sweta"
+                items={swetaGym.items}
+                isAuthorized={isAuthorized}
+                onAdd={swetaGym.add}
+                onDelete={swetaGym.remove}
+              />
+            )}
+
+            {(activeTab === 'amitDiet' || activeTab === 'swetaDiet') && (
+              <DietPlan name={activeTab === 'amitDiet' ? 'Amit' : 'Sweta'} />
             )}
 
             {activeTab === 'activity' && (
@@ -246,6 +318,16 @@ export default function App() {
               />
             )}
 
+            {activeTab === 'fees' && (
+              <AmishiFees
+                items={fees.items}
+                session={feesSession}
+                onSessionChange={setFeesSession}
+                isAuthorized={isAuthorized}
+                onSavePayment={handleSaveFeePayment}
+              />
+            )}
+
             {activeTab === 'calendar' && (
               <FamilyCalendar
                 items={calendar.items}
@@ -253,6 +335,14 @@ export default function App() {
                 onAdd={calendar.add}
                 onDelete={calendar.remove}
               />
+            )}
+
+            {activeTab === 'cleaning' && (
+              <CleaningSchedule />
+            )}
+
+            {activeTab === 'purchases' && (
+              <PurchasesTracker />
             )}
           </div>
         </main>

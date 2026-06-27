@@ -35,21 +35,35 @@ const SAVE_STATUS_STYLE = {
   error:   { color: '#ef4444', icon: '✗'  },
 };
 
-const EMPTY_INCOME  = () => ({ source: '', amount: '', remark: '' });
-const EMPTY_EXPENSE = () => ({ vendor: '', amount: '', purpose: '' });
+const EMPTY_INCOME  = () => ({ date: '', source: '', amount: '', remark: '' });
+const EMPTY_EXPENSE = () => ({ date: '', vendor: '', amount: '', purpose: '' });
+
+const CATEGORY_FILTERS = [
+  { label: '🍔 Swiggy',       keyword: 'swiggy' },
+  { label: '🍕 Zomato',       keyword: 'zomato' },
+  { label: '📈 Mutual Fund',  keyword: 'mutual fund' },
+  { label: '📦 Amazon',       keyword: 'amazon' },
+  { label: '🛒 Flipkart',     keyword: 'flipkart' },
+  { label: '🏬 DMart',        keyword: 'dmart' },
+  { label: '🏦 Axis Bank',    keyword: 'axis' },
+  { label: '🚗 Car Cleaner',  keyword: 'car cleaner' },
+  { label: '📺 Netflix',      keyword: 'netflix' },
+  { label: '📱 Airtel',       keyword: 'airtel' },
+];
 
 /**
  * @param {string} person   - 'sweta' | 'amit'
  * @param {string} personLabel - 'Sweta' | 'Amit'
  * @param {boolean} isAuthorized
  */
-export default function FinanceTracker({ person, personLabel, isAuthorized }) {
+export default function FinanceTracker({ person, personLabel, isAuthorized, refreshTrigger }) {
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth);
-  const [income,   setIncome]   = useState([EMPTY_INCOME()]);
-  const [expenses, setExpenses] = useState([EMPTY_EXPENSE()]);
+  const [income,   setIncome]   = useState([]);
+  const [expenses, setExpenses] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState('idle');
   const [saveMsg, setSaveMsg]   = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
 
   const isLoadedRef  = useRef(false);
   const autoSaveRef  = useRef(null);
@@ -68,8 +82,8 @@ export default function FinanceTracker({ person, personLabel, isAuthorized }) {
       if (!isFirebaseConfigured || !db) {
         setIsLoading(false);
         isLoadedRef.current = true;
-        setIncome([EMPTY_INCOME()]);
-        setExpenses([EMPTY_EXPENSE()]);
+        setIncome([]);
+        setExpenses([]);
         setSaveMsg(`Preview mode — ${formatMonthFull(selectedMonth)}`);
         return;
       }
@@ -78,12 +92,12 @@ export default function FinanceTracker({ person, personLabel, isAuthorized }) {
         if (!cancelled) {
           if (snap.exists()) {
             const data = snap.data();
-            setIncome((data.income?.length  ? data.income  : [EMPTY_INCOME()]));
-            setExpenses((data.expenses?.length ? data.expenses : [EMPTY_EXPENSE()]));
+            setIncome(data.income || []);
+            setExpenses(data.expenses || []);
             setSaveMsg(`${formatMonthFull(selectedMonth)}`);
           } else {
-            setIncome([EMPTY_INCOME()]);
-            setExpenses([EMPTY_EXPENSE()]);
+            setIncome([]);
+            setExpenses([]);
             setSaveMsg(`New record — ${formatMonthFull(selectedMonth)}`);
           }
         }
@@ -140,9 +154,8 @@ export default function FinanceTracker({ person, personLabel, isAuthorized }) {
   };
   const removeIncome = (i) => {
     const next = income.filter((_, idx) => idx !== i);
-    const safe = next.length ? next : [EMPTY_INCOME()];
-    setIncome(safe);
-    triggerAutoSave(safe, expenses);
+    setIncome(next);
+    triggerAutoSave(next, expenses);
   };
 
   /* ── Expense Row Ops ──────────────────────────────────────────── */
@@ -158,38 +171,42 @@ export default function FinanceTracker({ person, personLabel, isAuthorized }) {
   };
   const removeExpense = (i) => {
     const next = expenses.filter((_, idx) => idx !== i);
-    const safe = next.length ? next : [EMPTY_EXPENSE()];
-    setExpenses(safe);
-    triggerAutoSave(income, safe);
+    setExpenses(next);
+    triggerAutoSave(income, next);
   };
 
-  /* ── Totals ───────────────────────────────────────────────────── */
-  const totalIncome  = income.reduce((s, r)  => s + toNum(r.amount), 0);
-  const totalExpense = expenses.reduce((s, r) => s + toNum(r.amount), 0);
+  /* ── Totals (filtered dynamically by search term) ───────────────── */
+  const getFilteredIncome = () => {
+    return income.filter(row => {
+      return !searchTerm || 
+        (row.date || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (row.source || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+        (row.remark || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(row.amount || '').includes(searchTerm);
+    });
+  };
+
+  const getFilteredExpenses = () => {
+    return expenses.filter(row => {
+      return !searchTerm || 
+        (row.date || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (row.vendor || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+        (row.purpose || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        String(row.amount || '').includes(searchTerm);
+    });
+  };
+
+  const totalIncome  = getFilteredIncome().reduce((s, r)  => s + toNum(r.amount), 0);
+  const totalExpense = getFilteredExpenses().reduce((s, r) => s + toNum(r.amount), 0);
   const balance      = totalIncome - totalExpense;
 
   /* ── Excel Export ─────────────────────────────────────────────── */
   const handleExport = () => {
-    const rows = [
-      ...income.map(r => ({
-        Category: 'Income',
-        'Source / Vendor': r.source,
-        'Amount (₹)': toNum(r.amount),
-        'Remark / Purpose': r.remark || '',
-      })),
-      { Category: '— TOTAL INCOME —', 'Source / Vendor': '', 'Amount (₹)': totalIncome, 'Remark / Purpose': '' },
-      ...expenses.map(r => ({
-        Category: 'Expense',
-        'Source / Vendor': r.vendor,
-        'Amount (₹)': toNum(r.amount),
-        'Remark / Purpose': r.purpose || '',
-      })),
-      { Category: '— TOTAL EXPENSES —', 'Source / Vendor': '', 'Amount (₹)': totalExpense, 'Remark / Purpose': '' },
-      { Category: '— CLOSING BALANCE —', 'Source / Vendor': '', 'Amount (₹)': balance, 'Remark / Purpose': '' },
-    ];
-    const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, `${personLabel} Finance`);
+    const incSheet = XLSX.utils.json_to_sheet(income.map(i => ({ Date: i.date, Source: i.source, Amount: i.amount, Type: i.remark })));
+    const expSheet = XLSX.utils.json_to_sheet(expenses.map(e => ({ Date: e.date, Vendor: e.vendor, Amount: e.amount, Purpose: e.purpose })));
+    XLSX.utils.book_append_sheet(wb, incSheet, 'Income');
+    XLSX.utils.book_append_sheet(wb, expSheet, 'Expenses');
     XLSX.writeFile(wb, `${personLabel}_Finance_${selectedMonth}.xlsx`);
   };
 
@@ -270,6 +287,60 @@ export default function FinanceTracker({ person, personLabel, isAuthorized }) {
         </div>
       </div>
 
+      {/* ── Quick Category Filters ── */}
+      <div style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        <button
+          onClick={() => setSearchTerm('')}
+          style={{
+            padding: '6px 14px',
+            borderRadius: 20,
+            border: !searchTerm ? '2px solid #6366f1' : '1px solid #d1d5db',
+            background: !searchTerm ? '#eef2ff' : '#f9fafb',
+            color: !searchTerm ? '#4338ca' : '#374151',
+            fontWeight: !searchTerm ? 700 : 500,
+            fontSize: '0.8rem',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          🏷️ All
+        </button>
+        {CATEGORY_FILTERS.map(cat => {
+          const isActive = searchTerm.toLowerCase() === cat.keyword.toLowerCase();
+          return (
+            <button
+              key={cat.keyword}
+              onClick={() => setSearchTerm(isActive ? '' : cat.keyword)}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 20,
+                border: isActive ? '2px solid #6366f1' : '1px solid #d1d5db',
+                background: isActive ? '#eef2ff' : '#f9fafb',
+                color: isActive ? '#4338ca' : '#374151',
+                fontWeight: isActive ? 700 : 500,
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              {cat.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Search/Filter ── */}
+      <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'flex-end' }}>
+        <input 
+          type="search" 
+          className="finance-register-input" 
+          placeholder="🔍 Search transactions (e.g. Swiggy, Mutual Fund)..." 
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={{ width: '100%', maxWidth: '350px', background: '#fff' }}
+        />
+      </div>
+
       {/* ── Tables ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 480px), 1fr))', gap: 20 }}>
 
@@ -290,16 +361,35 @@ export default function FinanceTracker({ person, personLabel, isAuthorized }) {
             <table className="finance-table">
               <thead>
                 <tr style={{ background: '#ecfdf5' }}>
-                  <th style={{ color: '#059669' }}>Source / Amount Received</th>
+                  <th style={{ color: '#059669', width: 90 }}>Date</th>
+                  <th style={{ color: '#059669' }}>Income Source</th>
                   <th style={{ color: '#059669', textAlign: 'right', width: 130 }}>Amount (₹)</th>
-                  <th style={{ color: '#059669', width: 160 }}>Remark</th>
+                  <th style={{ color: '#059669', width: 160 }}>Type / Remark</th>
                   <th style={{ width: 36 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {income.map((row, i) => (
-                  <tr key={i}>
-                    <td>
+                {income.map((row, i) => {
+                  const isMatch = !searchTerm || 
+                    (row.date || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    (row.source || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                    (row.remark || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    String(row.amount || '').includes(searchTerm);
+                  
+                  if (!isMatch) return null;
+
+                  return (
+                    <tr key={i}>
+                      <td>
+                        <input
+                          className="finance-register-input"
+                          value={row.date || ''}
+                          onChange={e => updateIncome(i, 'date', e.target.value)}
+                          placeholder="DD/MM/YYYY"
+                          readOnly={!isAuthorized}
+                        />
+                      </td>
+                      <td>
                       <input
                         className="finance-register-input"
                         value={row.source}
@@ -340,7 +430,8 @@ export default function FinanceTracker({ person, personLabel, isAuthorized }) {
                       )}
                     </td>
                   </tr>
-                ))}
+                );
+              })}
                 {/* Total row */}
                 <tr style={{ background: 'rgba(236,253,245,0.7)', fontWeight: 700 }}>
                   <td style={{ color: '#059669', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -373,6 +464,7 @@ export default function FinanceTracker({ person, personLabel, isAuthorized }) {
             <table className="finance-table">
               <thead>
                 <tr style={{ background: '#fff1f2' }}>
+                  <th style={{ color: '#dc2626', width: 90 }}>Date</th>
                   <th style={{ color: '#dc2626' }}>Vendor / Payee</th>
                   <th style={{ color: '#dc2626', textAlign: 'right', width: 130 }}>Amount (₹)</th>
                   <th style={{ color: '#dc2626', width: 160 }}>Purpose</th>
@@ -380,8 +472,26 @@ export default function FinanceTracker({ person, personLabel, isAuthorized }) {
                 </tr>
               </thead>
               <tbody>
-                {expenses.map((row, i) => (
-                  <tr key={i}>
+                {expenses.map((row, i) => {
+                  const isMatch = !searchTerm || 
+                    (row.date || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    (row.vendor || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                    (row.purpose || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    String(row.amount || '').includes(searchTerm);
+                  
+                  if (!isMatch) return null;
+
+                  return (
+                    <tr key={i}>
+                      <td>
+                      <input
+                        className="finance-register-input"
+                        value={row.date || ''}
+                        onChange={e => updateExpense(i, 'date', e.target.value)}
+                        placeholder="DD/MM/YYYY"
+                        readOnly={!isAuthorized}
+                      />
+                    </td>
                     <td>
                       <input
                         className="finance-register-input"
@@ -423,8 +533,9 @@ export default function FinanceTracker({ person, personLabel, isAuthorized }) {
                       )}
                     </td>
                   </tr>
-                ))}
-                {/* Total row */}
+                );
+              })}
+              {/* Total row */}
                 <tr style={{ background: 'rgba(255,241,242,0.7)', fontWeight: 700 }}>
                   <td style={{ color: '#dc2626', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                     Total Expenses
