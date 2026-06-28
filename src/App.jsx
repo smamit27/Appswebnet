@@ -16,7 +16,6 @@ import DietPlan          from './components/organisms/DietPlan.jsx';
 import FamilyCalendar    from './components/organisms/FamilyCalendar.jsx';
 import CleaningSchedule  from './components/organisms/CleaningSchedule.jsx';
 import PurchasesTracker  from './components/organisms/PurchasesTracker.jsx';
-
 import { db } from './firebase.js';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -103,12 +102,10 @@ const NAV = [
     { id: 'purchases', label: 'Purchases Tracker' }
   ] },
   { group: 'Amit', items: [
-    { id: 'amitGym',  label: 'Gym Activity' },
-    { id: 'amitDiet', label: 'Diet Plan', iconId: 'diet' }
+    { id: 'amitDiet', label: 'Gym & Diet', iconId: 'diet' }
   ]},
   { group: 'Sweta', items: [
-    { id: 'swetaGym', label: 'Gym Activity' },
-    { id: 'swetaDiet', label: 'Diet Plan', iconId: 'diet' }
+    { id: 'swetaDiet', label: 'Gym & Diet', iconId: 'diet' }
   ]},
   { group: 'Amishi', items: [
     { id: 'activity', label: 'Daily Activity' },
@@ -286,25 +283,6 @@ export default function App() {
               <FinancePage isAuthorized={isAuthorized} />
             )}
 
-            {activeTab === 'amitGym' && (
-              <GymTracker
-                name="Amit"
-                items={amitGym.items}
-                isAuthorized={isAuthorized}
-                onAdd={amitGym.add}
-                onDelete={amitGym.remove}
-              />
-            )}
-
-            {activeTab === 'swetaGym' && (
-              <GymTracker
-                name="Sweta"
-                items={swetaGym.items}
-                isAuthorized={isAuthorized}
-                onAdd={swetaGym.add}
-                onDelete={swetaGym.remove}
-              />
-            )}
 
             {(activeTab === 'amitDiet' || activeTab === 'swetaDiet') && (
               <DietPlan name={activeTab === 'amitDiet' ? 'Amit' : 'Sweta'} />

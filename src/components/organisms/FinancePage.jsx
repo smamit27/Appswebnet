@@ -8,11 +8,8 @@ const PEOPLE = [
 ];
 
 export default function FinancePage({ isAuthorized }) {
-  const [activePerson, setActivePerson] = useState('sweta');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-
-  const person = PEOPLE.find(p => p.id === activePerson);
 
   return (
     <div style={{ display: 'grid', gap: 20, position: 'relative' }}>
@@ -22,7 +19,7 @@ export default function FinancePage({ isAuthorized }) {
           <p className="page-header__eyebrow">Personal Finance</p>
           <h1>Income & Expenses</h1>
           <p className="page-header__sub">
-            Monthly cashflow tracker for Sweta & Amit — income sources, expense ledger, and closing balance.
+            Monthly cashflow tracker for the Family — income sources, expense ledger, and closing balance.
           </p>
         </div>
         <div className="page-header__actions">
@@ -35,39 +32,19 @@ export default function FinancePage({ isAuthorized }) {
         </div>
       </div>
 
-      {/* Person Selector */}
-      <div className="person-tabs" style={{ marginBottom: 0 }}>
-        {PEOPLE.map(p => (
-          <button
-            key={p.id}
-            className={`person-tab ${activePerson === p.id ? 'person-tab--active' : ''}`}
-            onClick={() => setActivePerson(p.id)}
-            id={`finance-tab-${p.id}`}
-          >
-            <span style={{ fontSize: '1.1rem' }}>{p.emoji}</span>
-            {p.label}
-            {activePerson === p.id && (
-              <span style={{
-                width: 6, height: 6, borderRadius: '50%',
-                background: p.color, display: 'inline-block', marginLeft: 2
-              }} />
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Finance Tracker for selected person */}
+      {/* Finance Tracker for family */}
       <FinanceTracker
-        key={activePerson}
-        person={activePerson}
-        personLabel={person.label}
+        key="family"
+        person="family"
+        personLabel="Family"
         isAuthorized={isAuthorized}
         refreshTrigger={refreshTrigger}
       />
 
-      <UploadStatementModal 
+      <UploadStatementModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
+        personId="family"
         onUploadComplete={() => setRefreshTrigger(prev => prev + 1)}
       />
     </div>

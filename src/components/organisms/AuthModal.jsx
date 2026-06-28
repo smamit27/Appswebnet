@@ -93,6 +93,7 @@ export default function AuthModal({ isOpen, onClose, user, isAuthorized, onSignI
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

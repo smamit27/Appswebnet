@@ -267,7 +267,7 @@ export default function DietPlan({ name }) {
               <button 
                 onClick={() => setShowRoadmap(true)} 
                 className="btn btn--sm btn--primary" 
-                style={{ width: '100%', marginTop: '16px', background: 'var(--ocean)' }}
+                style={{ width: '100%', marginTop: '16px', background: '#000', color: '#fff' }}
               >
                 🗺️ View 6-Pack Roadmap Details
               </button>

@@ -1,24 +1,9 @@
 import React, { useState } from 'react';
+import { doc, getDoc, setDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { db, isFirebaseConfigured } from '../../firebase.js';
 import './PurchasesTracker.css';
 
-const MOCK_ORDERS = [
-  {
-    id: `BLK-2258608602`,
-    date: '25-Jun-2026',
-    seller: 'Blinkit',
-    paidBy: 'Pluxee',
-    totalAmount: 417.00,
-    billDetails: {
-      mrp: 417.00,
-      discount: 0.00,
-      itemTotal: 417.00,
-      handlingCharge: 0.00,
-      deliveryCharge: 0.00,
-    },
-    items: [
-      { id: 1, name: 'Blinkit Groceries', weight: 'mixed', qty: 1, price: 417.00, category: 'Groceries' },
-    ]
-  },
+export const MOCK_ORDERS = [
   {
     id: `RECHARGE-2706-SWETA`,
     date: '27-Jun-2026',
@@ -112,6 +97,7 @@ const MOCK_ORDERS = [
     id: 'BLK-2258608602',
     date: '25-Jun-2026',
     seller: 'Blinkit',
+    paidBy: 'Pluxee',
     totalAmount: 417.00,
     billDetails: {
       mrp: 410.00,
@@ -128,7 +114,7 @@ const MOCK_ORDERS = [
   }
 ];
 
-function getBillingCycle(dateString) {
+export function getBillingCycle(dateString) {
   const date = new Date(dateString);
   if (isNaN(date)) return 'Unknown Cycle';
   
@@ -153,17 +139,20 @@ function getBillingCycle(dateString) {
 }
 
 export default function PurchasesTracker() {
+  const [orders, setOrders] = useState(MOCK_ORDERS);
   const [expandedOrder, setExpandedOrder] = useState(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newOrder, setNewOrder] = useState({ id: '', date: '', seller: '', paidBy: '', totalAmount: '' });
 
   const groupedOrders = React.useMemo(() => {
-    return MOCK_ORDERS.reduce((acc, order) => {
+    return orders.reduce((acc, order) => {
       const cycle = getBillingCycle(order.date);
       if (!acc[cycle]) acc[cycle] = { total: 0, orders: [] };
       acc[cycle].orders.push(order);
       acc[cycle].total += order.totalAmount;
       return acc;
     }, {});
-  }, []);
+  }, [orders]);
 
   const allCycles = React.useMemo(() => {
     return Object.keys(groupedOrders).sort((a,b) => new Date(b.split(' - ')[0]) - new Date(a.split(' - ')[0]));
@@ -171,13 +160,15 @@ export default function PurchasesTracker() {
 
   const allCategories = React.useMemo(() => {
     const cats = new Set();
-    MOCK_ORDERS.forEach(order => {
-      order.items.forEach(item => {
-        if (item.category) cats.add(item.category);
-      });
+    orders.forEach(order => {
+      if (order.items) {
+        order.items.forEach(item => {
+          if (item.category) cats.add(item.category);
+        });
+      }
     });
     return ['All', ...Array.from(cats).sort()];
-  }, []);
+  }, [orders]);
 
   const [selectedCycle, setSelectedCycle] = useState(allCycles[0] || '');
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -185,6 +176,54 @@ export default function PurchasesTracker() {
   const toggleOrder = (id) => {
     if (expandedOrder === id) setExpandedOrder(null);
     else setExpandedOrder(id);
+  };
+
+  const handleAddPurchase = async (e) => {
+    e.preventDefault();
+    const order = {
+      ...newOrder,
+      totalAmount: parseFloat(newOrder.totalAmount) || 0,
+      displayTotal: parseFloat(newOrder.totalAmount) || 0,
+      items: [],
+      billDetails: {}
+    };
+
+    setOrders([order, ...orders]);
+    setIsAdding(false);
+    setNewOrder({ id: '', date: '', seller: '', paidBy: '', totalAmount: '' });
+
+    if (!isFirebaseConfigured || !db) return;
+
+    // sync with FinanceTracker
+    const d = new Date(order.date);
+    if (d.getDate() >= 25) d.setMonth(d.getMonth() + 1);
+    const cycleMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const recordId = `family_${cycleMonth}`;
+    
+    try {
+      const docRef = doc(db, 'financeMonthly_family', recordId);
+      const snap = await getDoc(docRef);
+      const expenseItem = {
+        date: order.date,
+        vendor: order.seller,
+        amount: String(order.totalAmount),
+        purpose: `Order ID: ${order.id} (Auto-added)`
+      };
+      
+      if (snap.exists()) {
+        await updateDoc(docRef, { expenses: arrayUnion(expenseItem) });
+      } else {
+        await setDoc(docRef, {
+          person: 'family',
+          month: cycleMonth,
+          income: [],
+          expenses: [expenseItem],
+          updatedAt: new Date()
+        });
+      }
+    } catch (err) {
+      console.error('Failed to sync purchase to finance:', err);
+    }
   };
 
   const currentCycleData = groupedOrders[selectedCycle] || { total: 0, orders: [] };
@@ -244,9 +283,38 @@ export default function PurchasesTracker() {
             <div className="cycle-total">
               Cycle Total: <strong>₹{displayCycleTotal.toFixed(2)}</strong>
             </div>
+            <button className="btn btn--primary btn--sm" style={{ marginLeft: 'auto' }} onClick={() => setIsAdding(!isAdding)}>
+              {isAdding ? 'Cancel' : '+ Add Purchase'}
+            </button>
           </div>
         )}
       </div>
+
+      {isAdding && (
+        <form className="add-purchase-form" onSubmit={handleAddPurchase} style={{ padding: '20px', background: 'var(--surface-50)', borderBottom: '1px solid var(--border)', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: '1 1 150px' }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Order ID</label>
+            <input type="text" required value={newOrder.id} onChange={e => setNewOrder({...newOrder, id: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '4px' }} placeholder="e.g. BLK-123" />
+          </div>
+          <div style={{ flex: '1 1 150px' }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Date</label>
+            <input type="date" required value={newOrder.date} onChange={e => setNewOrder({...newOrder, date: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '4px' }} />
+          </div>
+          <div style={{ flex: '1 1 150px' }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Seller</label>
+            <input type="text" required value={newOrder.seller} onChange={e => setNewOrder({...newOrder, seller: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '4px' }} placeholder="e.g. Amazon" />
+          </div>
+          <div style={{ flex: '1 1 150px' }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Paid By</label>
+            <input type="text" required value={newOrder.paidBy} onChange={e => setNewOrder({...newOrder, paidBy: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '4px' }} placeholder="e.g. Credit Card" />
+          </div>
+          <div style={{ flex: '1 1 100px' }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '4px' }}>Total Amount</label>
+            <input type="number" step="0.01" required value={newOrder.totalAmount} onChange={e => setNewOrder({...newOrder, totalAmount: e.target.value})} style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '4px' }} placeholder="₹0.00" />
+          </div>
+          <button type="submit" className="btn btn--primary" style={{ padding: '8px 16px', height: '35px' }}>Save</button>
+        </form>
+      )}
 
       <div className="table-card">
         <table>
@@ -257,7 +325,6 @@ export default function PurchasesTracker() {
               <th>Seller</th>
               <th>Paid By</th>
               <th>Total Amount</th>
-              <th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -278,73 +345,38 @@ export default function PurchasesTracker() {
                     <strong>₹{order.displayTotal.toFixed(2)}</strong>
                     {order.isPartial && <div style={{fontSize: '0.75rem', color: 'var(--slate)'}}>(Filtered)</div>}
                   </td>
-                  <td>
-                    <button className="btn btn--sm btn--secondary" onClick={(e) => { e.stopPropagation(); toggleOrder(order.id); }}>
-                      {expandedOrder === order.id ? 'Hide Details' : 'View Details'}
-                    </button>
-                  </td>
                 </tr>
                 {expandedOrder === order.id && (
                   <tr className="order-details-row">
-                    <td colSpan="6">
+                    <td colSpan="5">
                       <div className="order-details-panel">
-                        <h4>Order Summary ({order.items.length} items)</h4>
+                        <h4>Order Summary ({order.items ? order.items.length : 0} items)</h4>
                         
                         <div className="order-content-flex">
                           <div className="items-list">
-                            {order.items.map(item => (
+                            {order.items && order.items.map(item => (
                               <div className="item-row" key={item.id}>
                                 <div className="item-info">
                                   <div className="item-name">
                                     {item.name}
                                     {item.category && (
-                                      <span className={`cat-pill cat-pill--${item.category.toLowerCase().replace(' ', '-')}`}>
-                                        {item.category}
-                                      </span>
+                                      <span className="item-category-tag">{item.category}</span>
                                     )}
                                   </div>
-                                  <div className="item-meta">{item.weight} x {item.qty}</div>
+                                  <div className="item-meta">
+                                    {item.weight} • Qty: {item.qty}
+                                  </div>
                                 </div>
-                                <div className="item-price">₹{item.price.toFixed(2)}</div>
+                                <div className="item-price">
+                                  ₹{item.price.toFixed(2)}
+                                </div>
                               </div>
                             ))}
+                            {(!order.items || order.items.length === 0) && (
+                              <div style={{ color: 'var(--slate)', fontSize: '0.9rem', fontStyle: 'italic' }}>No item details available.</div>
+                            )}
                           </div>
                           
-                          {!order.isPartial && (
-                            <div className="bill-summary">
-                              <h5>Bill details</h5>
-                              <div className="bill-row">
-                                <span>MRP</span>
-                                <span>₹{order.billDetails.mrp.toFixed(2)}</span>
-                              </div>
-                              <div className="bill-row discount">
-                                <span>Product discount</span>
-                                <span>-₹{order.billDetails.discount.toFixed(2)}</span>
-                              </div>
-                              <div className="bill-row item-total">
-                                <span>Item total</span>
-                                <span>₹{order.billDetails.itemTotal.toFixed(2)}</span>
-                              </div>
-                              {order.billDetails.promoDiscount > 0 && (
-                                <div className="bill-row discount">
-                                  <span>Promo discount</span>
-                                  <span>-₹{order.billDetails.promoDiscount.toFixed(2)}</span>
-                                </div>
-                              )}
-                              <div className="bill-row">
-                                <span>Handling charge</span>
-                                <span>+₹{order.billDetails.handlingCharge.toFixed(2)}</span>
-                              </div>
-                              <div className="bill-row">
-                                <span>Delivery charges</span>
-                                <span className="free">FREE</span>
-                              </div>
-                              <div className="bill-row grand-total">
-                                <span>Bill total</span>
-                                <span>₹{order.totalAmount.toFixed(2)}</span>
-                              </div>
-                            </div>
-                          )}
                         </div>
                       </div>
                     </td>
