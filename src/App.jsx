@@ -181,7 +181,9 @@ export default function App() {
 
           {/* Brand */}
           <div className="sidebar__brand">
-            <div className="sidebar__logo">🏠</div>
+            <div className="sidebar__logo" style={{ background: '#fff', padding: '4px' }}>
+              <img src="/logo.png" alt="AppsWebNet Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            </div>
             {!isSidebarCollapsed && (
               <div className="sidebar__brand-text">
                 <p className="sidebar__kicker">Personal Hub</p>

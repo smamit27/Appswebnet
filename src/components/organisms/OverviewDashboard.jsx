@@ -87,7 +87,7 @@ export default function OverviewDashboard({ financeItems, gymItems, activityItem
         <p className="welcome-card__greeting">
           {getGreeting()}, Amit, Sweta & Amishi! 🌿
         </p>
-        <p className="welcome-card__sub">{getMonthName()} — Family Dashboard Overview</p>
+        <p className="welcome-card__sub">{getMonthName()} — AppsWebNet Dashboard Overview</p>
         <div className="welcome-stats">
           <div className="welcome-stat">
             <div className="welcome-stat__num">{fmt(netSavings)}</div>

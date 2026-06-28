@@ -64,8 +64,10 @@ export default function AuthModal({ isOpen, onClose, user, isAuthorized, onSignI
             </>
           ) : (
             <>
-              <div className="auth-card__icon" style={{ fontSize: '3rem' }}>🔒</div>
-              <div className="auth-card__title">Family Dashboard</div>
+              <div className="auth-card__icon" style={{ width: 64, height: 64, borderRadius: '12px', background: '#fff', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', border: '1px solid var(--line)' }}>
+                <img src="/logo.png" alt="AppsWebNet Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              </div>
+              <div className="auth-card__title">AppsWebNet Dashboard</div>
               <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: 24, lineHeight: 1.4 }}>
                 Sign in with your Google account to access your personalized data, trackers, and projections.
               </p>
