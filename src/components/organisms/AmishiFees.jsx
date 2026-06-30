@@ -21,17 +21,24 @@ export const SESSIONS_DATA = [
   { value: '2038-39', label: '12th Standard', offset: 13 },
 ];
 
+export function getMonthlyFee(offset) {
+  const baseMonthly = 10750;
+  const monthlyInc = 1000;
+  if (offset === 0) return 10750;
+  if (offset === 1) return 11550; // PREP is 11550 monthly / 23100 bimonthly
+  return baseMonthly + (offset * monthlyInc);
+}
+
 export default function AmishiFees({ items, session, onSessionChange, isAuthorized, onSavePayment }) {
   const currentSessionConfig = SESSIONS_DATA.find(s => s.value === session) || SESSIONS_DATA[0];
   const offset = currentSessionConfig.offset;
   const is2025 = offset === 0;
   
-  const baseMonthly = 10750;
-  const monthlyInc = 1000;
+  const monthlyFee = getMonthlyFee(offset);
 
   const FEE_STRUCTURE = {
-    monthly: baseMonthly + (offset * monthlyInc),
-    bimonthly: (baseMonthly + (offset * monthlyInc)) * 2,
+    monthly: monthlyFee,
+    bimonthly: monthlyFee * 2,
     misc: is2025 ? 6000 : 6600,
     books: is2025 ? 0 : 6662,
     admission: is2025 ? 140000 : 0,
@@ -460,7 +467,7 @@ export default function AmishiFees({ items, session, onSessionChange, isAuthoriz
                   ₹{(() => {
                     return SESSIONS_DATA.reduce((sum, s) => {
                       const is25 = s.offset === 0;
-                      const edu = (baseMonthly + (s.offset * monthlyInc)) * 12;
+                      const edu = getMonthlyFee(s.offset) * 12;
                       const misc = is25 ? 6000 : 6600;
                       const books = is25 ? 0 : 6662;
                       const adm = is25 ? 140000 : 0;
@@ -470,7 +477,7 @@ export default function AmishiFees({ items, session, onSessionChange, isAuthoriz
                     }, 0).toLocaleString();
                   })()}
                 </div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--muted)', margin: '8px 0 0' }}>Assumes a flat ₹1,000/mo increase for education fees each year. Books & Misc kept flat.</p>
+                <p style={{ fontSize: '0.85rem', color: 'var(--muted)', margin: '8px 0 0' }}>Assumes a flat ₹1,000/mo increase for education fees each year (PREP corrected to ₹11,550). Books & Misc kept flat.</p>
               </div>
 
               <div style={{ overflowX: 'auto', marginTop: 16 }}>
@@ -487,7 +494,7 @@ export default function AmishiFees({ items, session, onSessionChange, isAuthoriz
                   <tbody>
                     {SESSIONS_DATA.map(s => {
                       const is25 = s.offset === 0;
-                      const month = baseMonthly + (s.offset * monthlyInc);
+                      const month = getMonthlyFee(s.offset);
                       const edu = month * 12;
                       const misc = is25 ? 6000 : 6600;
                       const books = is25 ? 0 : 6662;
