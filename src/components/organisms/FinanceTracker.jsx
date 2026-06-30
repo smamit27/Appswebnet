@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import * as XLSX from 'xlsx';
 import { db, isFirebaseConfigured } from '../../firebase.js';
-import { MOCK_ORDERS } from './PurchasesTracker.jsx';
+import { parseLocalDate } from './PurchasesTracker.jsx';
+import { useCollection } from '../../hooks/useCollection.js';
+import {
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend
+} from 'recharts';
 import '../../finance.css';
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -13,84 +17,442 @@ const FINANCIAL_YEAR_MONTHS = Array.from({ length: 12 }, (_, i) => {
 
 function getCurrentMonth() {
   const d = new Date();
-  if (d.getDate() >= 25) {
-    d.setMonth(d.getMonth() + 1);
-  }
+  if (d.getDate() >= 25) d.setMonth(d.getMonth() + 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function formatMonthTab(mv) {
+function formatMonthDisplay(mv) {
+  const [y, m] = mv.split('-').map(Number);
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+}
+
+function formatMonthShort(mv) {
   const [y, m] = mv.split('-').map(Number);
   const curr = new Date(y, m - 1, 1);
   const prev = new Date(y, m - 2, 1);
-  const shortPrev = prev.toLocaleString('en-US', { month: 'short' });
-  const shortCurr = curr.toLocaleString('en-US', { month: 'short' });
-  const yy = curr.toLocaleString('en-US', { year: '2-digit' });
-  return `25 ${shortPrev} - 24 ${shortCurr} '${yy}`;
-}
-function formatMonthFull(mv) {
-  const [y, m] = mv.split('-').map(Number);
-  const curr = new Date(y, m - 1, 1);
-  const prev = new Date(y, m - 2, 1);
-  const longPrev = prev.toLocaleString('en-US', { month: 'long' });
-  const longCurr = curr.toLocaleString('en-US', { month: 'long' });
-  const yyyy = curr.getFullYear();
-  return `25 ${longPrev} - 24 ${longCurr} ${yyyy}`;
+  return `25 ${prev.toLocaleString('en-US', { month: 'short' })} - 24 ${curr.toLocaleString('en-US', { month: 'short' })} '${String(y).slice(2)}`;
 }
 
-const toNum  = (v) => parseFloat(v) || 0;
-const fmtAmt = (v) => Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const toNum = (v) => parseFloat(v) || 0;
+const fmtAmt = (v) => Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+const fmtAmtDec = (v) => Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const SAVE_STATUS_STYLE = {
-  idle:    { color: '#6b7280', icon: '●' },
-  pending: { color: '#f59e0b', icon: '⏳' },
-  saving:  { color: '#3b82f6', icon: '↑'  },
-  saved:   { color: '#10b981', icon: '✓'  },
-  error:   { color: '#ef4444', icon: '✗'  },
-};
+const INR = '₹';
 
-const EMPTY_INCOME  = () => ({ date: '', source: '', amount: '', remark: '', category: '', creditedTo: '' });
-const EMPTY_EXPENSE = () => ({ date: '', vendor: '', amount: '', purpose: '', category: '', paymentMode: '', refNo: '' });
-
-const CATEGORY_FILTERS = [
-  { label: '🍔 Swiggy',       keyword: 'swiggy' },
-  { label: '🍕 Zomato',       keyword: 'zomato' },
-  { label: '📈 Mutual Fund',  keyword: 'mutual fund' },
-  { label: '📦 Amazon',       keyword: 'amazon' },
-  { label: '🛒 Flipkart',     keyword: 'flipkart' },
-  { label: '🏬 DMart',        keyword: 'dmart' },
-  { label: '🏦 Axis Bank',    keyword: 'axis' },
-  { label: '🚗 Car Cleaner',  keyword: 'car cleaner' },
-  { label: '📺 Netflix',      keyword: 'netflix' },
-  { label: '📱 Airtel',       keyword: 'airtel' },
+const INCOME_CATEGORIES = ['Salary', 'Freelance', 'Investments', 'Dividend', 'Rent Received', 'Business', 'Other Income'];
+const EXPENSE_CATEGORIES = ['Food & Dining', 'Transport', 'Shopping', 'Bills & Utilities', 'Home', 'Home Loan EMI', 'Investments', 'Credit Card Payment', 'House Help', 'Monthly Maintenance', 'Healthcare', 'Entertainment', 'Education', 'Others'];
+const PAYMENT_METHODS = [
+  'HDFC Bank',
+  'Axis Bank',
+  'SBI Bank',
+  'ICICI Bank',
+  'Amit GPay',
+  'Sweta GPay',
+  'Pluxee',
+  'Amazon Credit Card',
+  'HSBC Credit Card',
+  'Axis Credit Card',
+  'Credit Card',
+  'Cash',
+  'Other'
 ];
 
-/**
- * @param {string} person   - 'sweta' | 'amit'
- * @param {string} personLabel - 'Sweta' | 'Amit'
- * @param {boolean} isAuthorized
- */
-export default function FinanceTracker({ person, personLabel, isAuthorized, refreshTrigger }) {
+const CATEGORY_ICONS = {
+  'Salary': '💼', 'Freelance': '🖥️', 'Investments': '📈', 'Dividend': '🪙', 'Rent Received': '🏠',
+  'Business': '🏢', 'Other Income': '💰',
+  'Food & Dining': '🍔', 'Transport': '🚗', 'Shopping': '🛍️',
+  'Bills & Utilities': '⚡', 'Home': '🏡', 'Home Loan EMI': '🏦', 'Investments': '📈', 'Credit Card Payment': '💳', 'House Help': '🧹', 'Monthly Maintenance': '🛠️', 'Healthcare': '💊',
+  'Entertainment': '🎬', 'Education': '📚', 'Others': '📦',
+};
+
+const CATEGORY_COLORS = {
+  'Food & Dining': '#FF6B6B', 'Transport': '#4ECDC4', 'Shopping': '#FFE66D',
+  'Bills & Utilities': '#A29BFE', 'Home': '#FD79A8', 'Home Loan EMI': '#4a90e2', 'Investments': '#FDCB6E', 'Credit Card Payment': '#6c5ce7', 'House Help': '#e17055', 'Monthly Maintenance': '#e67e22', 'Healthcare': '#74B9FF',
+  'Entertainment': '#FF7675', 'Education': '#55EFC4', 'Others': '#B2BEC3',
+  'Salary': '#00B894', 'Freelance': '#6C5CE7', 'Investments': '#FDCB6E', 'Dividend': '#20bf6b',
+  'Rent Received': '#E17055', 'Business': '#00CEC9', 'Other Income': '#A29BFE',
+};
+
+const EMPTY_INCOME = () => ({
+  date: new Date().toISOString().slice(0, 10),
+  source: '',
+  amount: '',
+  remark: '',
+  category: 'Salary',
+  creditedTo: 'HDFC Bank',
+  type: 'income'
+});
+
+const EMPTY_EXPENSE = () => ({
+  date: new Date().toISOString().slice(0, 10),
+  vendor: '',
+  amount: '',
+  purpose: '',
+  category: 'Food & Dining',
+  paymentMode: 'HDFC Bank',
+  refNo: '',
+  type: 'expense'
+});
+
+/* ── Mini Sparkline ── */
+function Sparkline({ data, color = '#10b981', isPositive = true }) {
+  if (!data || data.length < 2) return <div style={{ width: 80, height: 32 }} />;
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data, 0);
+  const range = max - min || 1;
+  const w = 80, h = 32;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - ((v - min) / range) * (h - 4) - 2;
+    return `${x},${y}`;
+  }).join(' ');
+  return (
+    <svg width={w} height={h} style={{ display: 'block' }}>
+      <polyline fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={pts} />
+    </svg>
+  );
+}
+
+/* ── Add Transaction Modal ── */
+function AddTransactionModal({ isOpen, onClose, onSave, isAuthorized }) {
+  const [txType, setTxType] = useState('income');
+  const [form, setForm] = useState(EMPTY_INCOME());
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setTxType('income');
+      setForm(EMPTY_INCOME());
+    }
+  }, [isOpen]);
+
+  const handleTypeSwitch = (t) => {
+    setTxType(t);
+    setForm(t === 'income' ? EMPTY_INCOME() : EMPTY_EXPENSE());
+  };
+
+  const handleField = (field, val) => setForm(f => ({ ...f, [field]: val }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    await onSave(txType, form);
+    setSaving(false);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  const incomeCategories = INCOME_CATEGORIES;
+  const expenseCategories = EXPENSE_CATEGORIES;
+  const currentCats = txType === 'income' ? incomeCategories : expenseCategories;
+
+  return (
+    <div className="ft-modal-overlay" onClick={onClose}>
+      <div className="ft-modal-shell" onClick={e => e.stopPropagation()}>
+
+        {/* Left Panel — Form */}
+        <div className="ft-modal-form-panel">
+          {/* Type Toggle */}
+          <div className="ft-type-toggle">
+            <button
+              className={`ft-type-btn ${txType === 'income' ? 'ft-type-btn--income active' : ''}`}
+              onClick={() => handleTypeSwitch('income')}
+            >
+              <div className="ft-type-icon ft-type-icon--income">↑</div>
+              <div>
+                <div className="ft-type-label">Income</div>
+                <div className="ft-type-sub">Money coming in</div>
+              </div>
+            </button>
+            <button
+              className={`ft-type-btn ${txType === 'expense' ? 'ft-type-btn--expense active' : ''}`}
+              onClick={() => handleTypeSwitch('expense')}
+            >
+              <div className="ft-type-icon ft-type-icon--expense">↓</div>
+              <div>
+                <div className="ft-type-label">Expense</div>
+                <div className="ft-type-sub">Money going out</div>
+              </div>
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="ft-form-grid">
+            {/* Amount */}
+            <div className="ft-field ft-field--half">
+              <label className="ft-label">Amount <span className="ft-required">*</span></label>
+              <div className="ft-input-wrap ft-input-wrap--icon">
+                <span className="ft-input-icon">₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  placeholder="Enter amount"
+                  value={form.amount}
+                  onChange={e => handleField('amount', e.target.value)}
+                  className="ft-input"
+                />
+              </div>
+            </div>
+
+            {/* Category */}
+            <div className="ft-field ft-field--half">
+              <label className="ft-label">Category <span className="ft-required">*</span></label>
+              <div className="ft-input-wrap ft-input-wrap--icon">
+                <span className="ft-input-icon">🏷️</span>
+                <select
+                  required
+                  value={form.category}
+                  onChange={e => handleField('category', e.target.value)}
+                  className="ft-input ft-select"
+                >
+                  {currentCats.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Date */}
+            <div className="ft-field ft-field--half">
+              <label className="ft-label">Date <span className="ft-required">*</span></label>
+              <div className="ft-input-wrap ft-input-wrap--icon">
+                <span className="ft-input-icon">📅</span>
+                <input
+                  type="date"
+                  required
+                  value={form.date}
+                  onChange={e => handleField('date', e.target.value)}
+                  className="ft-input"
+                />
+              </div>
+            </div>
+
+            {/* Source / Vendor */}
+            <div className="ft-field ft-field--half">
+              <label className="ft-label">
+                {txType === 'income' ? 'Source (optional)' : 'Payee (optional)'}
+              </label>
+              <div className="ft-input-wrap ft-input-wrap--icon">
+                <span className="ft-input-icon">👤</span>
+                <input
+                  type="text"
+                  placeholder={txType === 'income' ? 'e.g. Employer, Client' : 'e.g. Swiggy, Amazon'}
+                  value={txType === 'income' ? (form.source || '') : (form.vendor || '')}
+                  onChange={e => handleField(txType === 'income' ? 'source' : 'vendor', e.target.value)}
+                  className="ft-input"
+                />
+              </div>
+            </div>
+
+            {/* Account / Payment */}
+            <div className="ft-field ft-field--half">
+              <label className="ft-label">Account <span className="ft-required">*</span></label>
+              <div className="ft-input-wrap ft-input-wrap--icon">
+                <span className="ft-input-icon">🏦</span>
+                <select
+                  value={txType === 'income' ? (form.creditedTo || '') : (form.paymentMode || '')}
+                  onChange={e => handleField(txType === 'income' ? 'creditedTo' : 'paymentMode', e.target.value)}
+                  className="ft-input ft-select"
+                >
+                  <option value="">Select account</option>
+                  {PAYMENT_METHODS.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Ref / Remark */}
+            <div className="ft-field ft-field--half">
+              <label className="ft-label">Reference (optional)</label>
+              <div className="ft-input-wrap ft-input-wrap--icon">
+                <span className="ft-input-icon">📋</span>
+                <input
+                  type="text"
+                  placeholder="e.g. Invoice No., Reference no."
+                  value={txType === 'income' ? (form.remark || '') : (form.refNo || '')}
+                  onChange={e => handleField(txType === 'income' ? 'remark' : 'refNo', e.target.value)}
+                  className="ft-input"
+                />
+              </div>
+            </div>
+
+            {/* Note */}
+            <div className="ft-field ft-field--full">
+              <label className="ft-label">Note (optional)</label>
+              <textarea
+                placeholder="Add a note (optional)"
+                maxLength={250}
+                value={form.purpose || ''}
+                onChange={e => handleField('purpose', e.target.value)}
+                className="ft-input ft-textarea"
+                rows={3}
+              />
+              <div className="ft-char-count">{(form.purpose || '').length}/250</div>
+            </div>
+
+            {/* Actions */}
+            <div className="ft-form-actions">
+              <button type="button" className="ft-btn-cancel" onClick={onClose}>Cancel</button>
+              <button
+                type="submit"
+                disabled={saving || !isAuthorized}
+                className={`ft-btn-save ${txType === 'income' ? 'ft-btn-save--income' : 'ft-btn-save--expense'}`}
+              >
+                {saving ? 'Saving…' : 'Save Transaction'}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Right Panel — Tips & Recent */}
+        <div className="ft-modal-info-panel">
+          {/* Quick Tips */}
+          <div className="ft-info-card">
+            <h4 className="ft-info-title">Quick Tips</h4>
+            <div className="ft-tip-item">
+              <span className="ft-tip-icon">ℹ️</span>
+              <p>
+                {txType === 'income'
+                  ? 'Record your income sources like salary, freelance, rent received, investments etc.'
+                  : 'Record your expenses like food, transport, bills, shopping and more.'}
+              </p>
+            </div>
+          </div>
+
+          {/* Recent Categories */}
+          <div className="ft-info-card">
+            <div className="ft-info-card-head">
+              <h4 className="ft-info-title">
+                {txType === 'income' ? 'Recent Income Categories' : 'Recent Expense Categories'}
+              </h4>
+            </div>
+            <div className="ft-cat-list">
+              {currentCats.slice(0, 4).map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  className={`ft-cat-item ${form.category === cat ? 'ft-cat-item--active' : ''}`}
+                  onClick={() => handleField('category', cat)}
+                >
+                  <span className="ft-cat-icon">{CATEGORY_ICONS[cat] || '📦'}</span>
+                  <div className="ft-cat-details">
+                    <span className="ft-cat-name">{cat}</span>
+                    <span className="ft-cat-sub">
+                      {txType === 'income' ? 'Income source' : 'Expense type'}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Need Help */}
+          <div className="ft-info-card ft-help-card">
+            <h4 className="ft-info-title">Need Help?</h4>
+            <p style={{ fontSize: '0.8rem', color: 'var(--muted)', margin: '4px 0 8px' }}>
+              Learn how to manage your transactions effectively.
+            </p>
+            <button type="button" className="ft-help-btn">View Help Center ↗</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Budget Card ── */
+function BudgetBar({ category, spent, budget }) {
+  const pct = budget > 0 ? Math.min((spent / budget) * 100, 150) : 0;
+  const exceeded = spent > budget;
+  const color = exceeded ? '#ef4444' : pct > 80 ? '#f59e0b' : '#10b981';
+  return (
+    <div className="ft-budget-item">
+      <div className="ft-budget-head">
+        <span className="ft-budget-icon">{CATEGORY_ICONS[category] || '📦'}</span>
+        <div className="ft-budget-info">
+          <span className="ft-budget-cat">{category}</span>
+          <span className="ft-budget-amounts">
+            {INR}{fmtAmt(spent)} / {INR}{fmtAmt(budget)}
+          </span>
+        </div>
+        <span className="ft-budget-pct" style={{ color }}>{exceeded ? 'Budget Exceeded' : `${Math.round(pct)}%`}</span>
+      </div>
+      <div className="ft-budget-bar-bg">
+        <div
+          className="ft-budget-bar-fill"
+          style={{ width: `${Math.min(pct, 100)}%`, background: color }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ── Main Component ── */
+export default function FinanceTracker({ person, personLabel, isAuthorized, user, refreshTrigger }) {
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth);
-  const [income,   setIncome]   = useState([]);
+  const [income, setIncome] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState('idle');
-  const [saveMsg, setSaveMsg]   = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeViewTab, setActiveViewTab] = useState('compare');
+  const [txFilter, setTxFilter] = useState('All'); // 'All' | 'Income' | 'Expense'
+  const [formOpen, setFormOpen] = useState(null); // null | 'income' | 'expense'
+  const [editingIdx, setEditingIdx] = useState(null); // null | number
+  const [formData, setFormData] = useState(EMPTY_INCOME());
+  const [formSaving, setFormSaving] = useState(false);
+  const [showAllTx, setShowAllTx] = useState(false);
 
-  const isLoadedRef  = useRef(false);
-  const autoSaveRef  = useRef(null);
-  const collectionId = `financeMonthly_${person}`;       // e.g. financeMonthly_sweta
-  const recordId     = `${person}_${selectedMonth}`;     // e.g. sweta_2026-06
+  const [sortField, setSortField] = useState('date'); // 'date' | 'category' | 'amount'
+  const [sortDirection, setSortDirection] = useState('desc'); // 'asc' | 'desc'
 
-  /* ── Load from Firestore ──────────────────────────────────────── */
+  const toggleSort = (field) => {
+    if (sortField === field) {
+      setSortDirection(dir => dir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const openForm = (type, index = null) => {
+    setFormOpen(type);
+    if (index !== null) {
+      setEditingIdx(index);
+      const tx = type === 'income' ? income[index] : expenses[index];
+      setFormData({
+        ...tx,
+        amount: tx.amount !== undefined ? tx.amount : ''
+      });
+    } else {
+      setEditingIdx(null);
+      setFormData(type === 'income' ? EMPTY_INCOME() : EMPTY_EXPENSE());
+    }
+  };
+  const closeForm = () => {
+    setFormOpen(null);
+    setEditingIdx(null);
+    setFormData(EMPTY_INCOME());
+  };
+  const handleFormField = (field, val) => setFormData(f => ({ ...f, [field]: val }));
+
+  const handleFormSubmit = async (e) => {
+    e.preventDefault();
+    setFormSaving(true);
+    await handleSaveTransaction(formOpen, formData);
+    setFormSaving(false);
+    closeForm();
+  };
+
+  const isLoadedRef = useRef(false);
+  const autoSaveRef = useRef(null);
+  const collectionId = `financeMonthly_${person}`;
+  const recordId = `${person}_${selectedMonth}`;
+
+  /* ── Load ── */
   useEffect(() => {
     let cancelled = false;
     isLoadedRef.current = false;
     setSaveStatus('idle');
-    setSaveMsg('');
 
     async function load() {
       setIsLoading(true);
@@ -99,7 +461,6 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, refr
         isLoadedRef.current = true;
         setIncome([]);
         setExpenses([]);
-        setSaveMsg(`Preview mode — ${formatMonthFull(selectedMonth)}`);
         return;
       }
       try {
@@ -109,25 +470,22 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, refr
             const data = snap.data();
             setIncome(data.income || []);
             setExpenses(data.expenses || []);
-            setSaveMsg(`${formatMonthFull(selectedMonth)}`);
           } else {
             setIncome([]);
             setExpenses([]);
-            setSaveMsg(`New record — ${formatMonthFull(selectedMonth)}`);
           }
         }
       } catch (err) {
         console.error('Finance load error:', err);
-        if (!cancelled) setSaveMsg('Load failed.');
       } finally {
         if (!cancelled) { setIsLoading(false); isLoadedRef.current = true; }
       }
     }
     load();
     return () => { cancelled = true; };
-  }, [recordId, collectionId, selectedMonth]);
+  }, [recordId, collectionId, selectedMonth, refreshTrigger]);
 
-  /* ── Save to Firestore ────────────────────────────────────────── */
+  /* ── Save ── */
   const saveToFirestore = useCallback(async (inc, exp) => {
     setSaveStatus('saving');
     if (!isFirebaseConfigured || !db) { setSaveStatus('saved'); return; }
@@ -140,11 +498,10 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, refr
         updatedAt: serverTimestamp(),
       }, { merge: true });
       setSaveStatus('saved');
-      setSaveMsg('All changes saved ✓');
+      setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (err) {
       console.error('Finance save error:', err);
       setSaveStatus('error');
-      setSaveMsg('Save failed — check connection.');
     }
   }, [collectionId, recordId, person, selectedMonth]);
 
@@ -152,578 +509,763 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, refr
     if (!isLoadedRef.current || !isAuthorized) return;
     clearTimeout(autoSaveRef.current);
     setSaveStatus('pending');
-    setSaveMsg('Unsaved changes…');
     autoSaveRef.current = setTimeout(() => saveToFirestore(inc, exp), 1500);
   };
 
-  /* ── Income Row Ops ───────────────────────────────────────────── */
-  const addIncomeRow = () => {
-    const next = [...income, EMPTY_INCOME()];
-    setIncome(next);
-    triggerAutoSave(next, expenses);
+  /* ── Tx CRUD ── */
+  const handleSaveTransaction = async (type, form) => {
+    if (type === 'income') {
+      const row = {
+        date: form.date,
+        source: form.source || '',
+        amount: form.amount,
+        remark: form.remark || '',
+        category: form.category,
+        creditedTo: form.creditedTo || '',
+        type: 'income',
+      };
+      let next;
+      if (editingIdx !== null) {
+        next = [...income];
+        next[editingIdx] = row;
+      } else {
+        next = [...income, row];
+      }
+      setIncome(next);
+      triggerAutoSave(next, expenses);
+    } else {
+      const row = {
+        date: form.date,
+        vendor: form.vendor || '',
+        amount: form.amount,
+        purpose: form.purpose || '',
+        category: form.category,
+        paymentMode: form.paymentMode || '',
+        refNo: form.refNo || '',
+        type: 'expense',
+      };
+      let next;
+      if (editingIdx !== null) {
+        next = [...expenses];
+        next[editingIdx] = row;
+      } else {
+        next = [...expenses, row];
+      }
+      setExpenses(next);
+      triggerAutoSave(income, next);
+    }
   };
-  const updateIncome = (i, field, val) => {
-    const next = income.map((r, idx) => idx === i ? { ...r, [field]: val } : r);
-    setIncome(next);
-    triggerAutoSave(next, expenses);
-  };
+
   const removeIncome = (i) => {
     const next = income.filter((_, idx) => idx !== i);
     setIncome(next);
     triggerAutoSave(next, expenses);
   };
 
-  /* ── Expense Row Ops ──────────────────────────────────────────── */
-  const addExpenseRow = () => {
-    const next = [...expenses, EMPTY_EXPENSE()];
-    setExpenses(next);
-    triggerAutoSave(income, next);
-  };
-  const updateExpense = (i, field, val) => {
-    const next = expenses.map((r, idx) => idx === i ? { ...r, [field]: val } : r);
-    setExpenses(next);
-    triggerAutoSave(income, next);
-  };
   const removeExpense = (i) => {
     const next = expenses.filter((_, idx) => idx !== i);
     setExpenses(next);
     triggerAutoSave(income, next);
   };
 
-  /* ── Totals (filtered dynamically by search term) ───────────────── */
-  const getFilteredIncome = () => {
-    return income.filter(row => {
-      return !searchTerm || 
-        (row.date || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (row.source || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-        (row.remark || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        String(row.amount || '').includes(searchTerm);
+  /* ── Totals ── */
+  const totalIncome = income.reduce((s, r) => s + toNum(r.amount), 0);
+  const totalExpense = expenses.reduce((s, r) => s + toNum(r.amount), 0);
+  const netSavings = totalIncome - totalExpense;
+  const avgDailyExpense = expenses.length > 0 ? totalExpense / 30 : 0;
+
+  /* ── Combined Transactions (sorted dynamically) ── */
+  const allTransactions = useMemo(() => {
+    const inc = income.map((r, i) => ({ ...r, _type: 'income', _idx: i, _key: `inc-${i}` }));
+    const exp = expenses.map((r, i) => ({ ...r, _type: 'expense', _idx: i, _key: `exp-${i}` }));
+    const combined = [...inc, ...exp];
+    combined.sort((a, b) => {
+      let valA, valB;
+      if (sortField === 'date') {
+        valA = parseLocalDate(a.date).getTime();
+        valB = parseLocalDate(b.date).getTime();
+      } else if (sortField === 'category') {
+        const catA = a.category || (a._type === 'income' ? 'Income' : 'Expense');
+        const catB = b.category || (b._type === 'income' ? 'Income' : 'Expense');
+        return sortDirection === 'asc' 
+          ? catA.localeCompare(catB) 
+          : catB.localeCompare(catA);
+      } else if (sortField === 'amount') {
+        valA = toNum(a.amount);
+        valB = toNum(b.amount);
+      } else {
+        valA = a[sortField] || '';
+        valB = b[sortField] || '';
+      }
+
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
     });
-  };
-
-  const getFilteredExpenses = () => {
-    return expenses.filter(row => {
-      return !searchTerm || 
-        (row.date || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (row.vendor || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-        (row.purpose || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        String(row.amount || '').includes(searchTerm);
+    const filtered = combined.filter(tx => {
+      const matchFilter = txFilter === 'All' || 
+        (txFilter === 'Income' && tx._type === 'income') ||
+        (txFilter === 'Expense' && tx._type === 'expense');
+      const matchSearch = !searchTerm ||
+        (tx.source || tx.vendor || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (tx.category || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (tx.date || '').includes(searchTerm);
+      return matchFilter && matchSearch;
     });
-  };
+    return filtered;
+  }, [income, expenses, txFilter, searchTerm, sortField, sortDirection]);
 
-  const cyclePurchases = useMemo(() => {
-    return MOCK_ORDERS.filter(order => {
-      const d = new Date(order.date);
-      if (d.getDate() >= 25) d.setMonth(d.getMonth() + 1);
-      const cycleMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      return cycleMonth === selectedMonth;
+  const displayTx = showAllTx ? allTransactions : allTransactions.slice(0, 7);
+
+  /* ── Category breakdown (expenses) ── */
+  const expenseByCategory = useMemo(() => {
+    const map = {};
+    expenses.forEach(r => {
+      const cat = r.category || 'Others';
+      map[cat] = (map[cat] || 0) + toNum(r.amount);
     });
-  }, [selectedMonth]);
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .filter(item => item.value > 0) // Prevent Recharts Pie from crashing when values are 0
+      .sort((a, b) => b.value - a.value);
+  }, [expenses]);
 
-  const purchasesTotal = cyclePurchases.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+  /* ── Last 4 weeks weekly data ── */
+  const weeklyData = useMemo(() => {
+    const weeks = [
+      { label: '1-7', income: 0, expense: 0 },
+      { label: '8-14', income: 0, expense: 0 },
+      { label: '15-21', income: 0, expense: 0 },
+      { label: '22-30', income: 0, expense: 0 },
+    ];
+    const [y, m] = selectedMonth.split('-').map(Number);
+    income.forEach(r => {
+      const d = parseLocalDate(r.date);
+      if (d.getFullYear() === y && d.getMonth() + 1 === m) {
+        const day = d.getDate();
+        const wi = day <= 7 ? 0 : day <= 14 ? 1 : day <= 21 ? 2 : 3;
+        weeks[wi].income += toNum(r.amount);
+      }
+    });
+    expenses.forEach(r => {
+      const d = parseLocalDate(r.date);
+      if (d.getFullYear() === y && d.getMonth() + 1 === m) {
+        const day = d.getDate();
+        const wi = day <= 7 ? 0 : day <= 14 ? 1 : day <= 21 ? 2 : 3;
+        weeks[wi].expense += toNum(r.amount);
+      }
+    });
+    return weeks.map(w => ({
+      ...w,
+      label: `${w.label} ${new Date(y, m - 1, 1).toLocaleString('en-IN', { month: 'short' })}`
+    }));
+  }, [income, expenses, selectedMonth]);
 
-  const totalIncome  = getFilteredIncome().reduce((s, r)  => s + toNum(r.amount), 0);
-  const totalExpense = getFilteredExpenses().reduce((s, r) => s + toNum(r.amount), 0) + purchasesTotal;
-  const balance      = totalIncome - totalExpense;
-
-  /* ── Excel Export ─────────────────────────────────────────────── */
-  const handleExport = () => {
-    const wb = XLSX.utils.book_new();
-    const incSheet = XLSX.utils.json_to_sheet(income.map(i => ({ Date: i.date, Source: i.source, Amount: i.amount, Type: i.remark })));
-    const expSheet = XLSX.utils.json_to_sheet(expenses.map(e => ({ Date: e.date, Vendor: e.vendor, Amount: e.amount, Purpose: e.purpose })));
-    XLSX.utils.book_append_sheet(wb, incSheet, 'Income');
-    XLSX.utils.book_append_sheet(wb, expSheet, 'Expenses');
-    XLSX.writeFile(wb, `${personLabel}_Finance_${selectedMonth}.xlsx`);
+  /* ── Budget (mock budgets) ── */
+  const BUDGETS = {
+    'Food & Dining': 10000,
+    'Transport': 5000,
+    'Shopping': 8000,
+    'Bills & Utilities': 4000,
+    'Healthcare': 3000,
+    'Entertainment': 2000,
   };
 
-  const handleManualSave = () => {
-    clearTimeout(autoSaveRef.current);
-    saveToFirestore(income, expenses);
+  const budgetData = useMemo(() => {
+    return Object.entries(BUDGETS).map(([cat, budget]) => {
+      const spent = expenseByCategory.find(e => e.name === cat)?.value || 0;
+      return { category: cat, spent, budget };
+    });
+  }, [expenseByCategory]);
+
+  /* ── Metric mini-chart data (last 3 months dummy) ── */
+  const incomeSparkData = [totalIncome * 0.8, totalIncome * 0.9, totalIncome * 0.95, totalIncome];
+  const expenseSparkData = [totalExpense * 0.9, totalExpense * 1.05, totalExpense * 0.95, totalExpense];
+  const savingsSparkData = [netSavings * 0.7, netSavings * 0.8, netSavings * 0.9, netSavings];
+
+  const CustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px', fontSize: '0.8rem', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+          {payload.map((p, i) => (
+            <div key={i} style={{ color: p.color, fontWeight: 600 }}>
+              {p.name}: {INR}{fmtAmt(p.value)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return null;
   };
 
-  const statusStyle = SAVE_STATUS_STYLE[saveStatus];
+  const currentCats = formOpen === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-      {/* ── Month Tabs ── */}
-      <div className="table-card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="finance-month-tabs" role="tablist">
+    <div className="ft-root">
+      {/* ── Month Selector Strip ── */}
+      <div className="ft-month-strip">
+        <div className="ft-month-tabs" role="tablist">
           {FINANCIAL_YEAR_MONTHS.map(mv => (
             <button
               key={mv}
               role="tab"
               aria-selected={selectedMonth === mv}
-              className={`finance-month-tab ${selectedMonth === mv ? 'finance-month-tab--active' : ''}`}
+              className={`ft-month-tab ${selectedMonth === mv ? 'ft-month-tab--active' : ''}`}
               onClick={() => setSelectedMonth(mv)}
             >
-              {formatMonthTab(mv)}
+              {formatMonthShort(mv)}
             </button>
           ))}
         </div>
+        <div className="ft-month-actions">
+          {saveStatus === 'saving' && <span className="ft-save-badge ft-save-badge--saving">↑ Saving…</span>}
+          {saveStatus === 'saved' && <span className="ft-save-badge ft-save-badge--saved">✓ Saved</span>}
+          {saveStatus === 'error' && <span className="ft-save-badge ft-save-badge--error">✗ Error</span>}
+          {isAuthorized && (
+            <>
+              <button
+                className="ft-add-income-btn"
+                onClick={() => openForm('income')}
+              >
+                <span>↑</span> Add Income
+              </button>
+              <button
+                className="ft-add-expense-btn"
+                onClick={() => openForm('expense')}
+              >
+                <span>↓</span> Add Expense
+              </button>
+            </>
+          )}
+        </div>
+      </div>
 
-        {/* Header */}
-        <div className="finance-module-header">
-          <div>
-            <p className="eyebrow">Monthly Cashflow Tracker</p>
-            <h3>Income & Expenses — {formatMonthFull(selectedMonth)}</h3>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-            <div className="save-status" style={{ color: statusStyle.color }}>
-              <span>{statusStyle.icon}</span>
-              <span>{isLoading ? 'Loading…' : saveMsg || 'Ready'}</span>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {isAuthorized && (
+      {/* ── Add Transaction Popup Modal ── */}
+      {formOpen && (
+        <div className="ft-modal-overlay" onClick={closeForm}>
+          <div
+            className={`ft-popup ${formOpen === 'income' ? 'ft-popup--income' : 'ft-popup--expense'}`}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Popup Header */}
+            <div className="ft-popup-head">
+              <div className="ft-popup-head-left">
+                <div className={`ft-popup-type-badge ${formOpen === 'income' ? 'ft-popup-type-badge--income' : 'ft-popup-type-badge--expense'}`}>
+                  {formOpen === 'income' ? '↑' : '↓'}
+                </div>
+                <div>
+                  <h3 className="ft-popup-title">
+                    {formOpen === 'income' ? 'Add Income' : 'Add Expense'}
+                  </h3>
+                  <p className="ft-popup-sub">
+                    {formOpen === 'income' ? 'Record money coming in' : 'Record money going out'}
+                  </p>
+                </div>
+              </div>
+              {/* Switch type */}
+              <div className="ft-popup-type-switch">
                 <button
-                  className="btn btn--secondary btn--sm"
-                  onClick={handleManualSave}
-                  disabled={isLoading || saveStatus === 'saving'}
-                >
-                  💾 Save
-                </button>
-              )}
-              <button className="btn btn--secondary btn--sm" onClick={handleExport}>
-                ⬇ Export Excel
+                  type="button"
+                  className={`ft-popup-switch-btn ${formOpen === 'income' ? 'active--income' : ''}`}
+                  onClick={() => { setFormOpen('income'); setFormData(EMPTY_INCOME()); }}
+                >↑ Income</button>
+                <button
+                  type="button"
+                  className={`ft-popup-switch-btn ${formOpen === 'expense' ? 'active--expense' : ''}`}
+                  onClick={() => { setFormOpen('expense'); setFormData(EMPTY_EXPENSE()); }}
+                >↓ Expense</button>
+              </div>
+              <button className="ft-popup-close" onClick={closeForm} aria-label="Close">✕</button>
+            </div>
+
+            {/* Popup Body: form + categories side by side */}
+            <div className="ft-popup-body">
+              {/* Left: Form */}
+              <form onSubmit={handleFormSubmit} className="ft-popup-form">
+                <div className="ft-popup-fields">
+                  {/* Amount — full width, highlighted */}
+                  <div className="ft-field ft-field--amount-hero">
+                    <label className="ft-label">Amount <span className="ft-required">*</span></label>
+                    <div className="ft-input-wrap ft-input-wrap--icon ft-amount-wrap">
+                      <span className="ft-amount-prefix">₹</span>
+                      <input
+                        type="number" min="0" step="0.01" required
+                        placeholder="0.00"
+                        autoFocus
+                        value={formData.amount}
+                        onChange={e => handleFormField('amount', e.target.value)}
+                        className="ft-amount-input"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row: Date + Account */}
+                  <div className="ft-popup-row">
+                    <div className="ft-field">
+                      <label className="ft-label">Date <span className="ft-required">*</span></label>
+                      <div className="ft-input-wrap ft-input-wrap--icon">
+                        <span className="ft-input-icon">📅</span>
+                        <input type="date" required value={formData.date}
+                          onChange={e => handleFormField('date', e.target.value)}
+                          className="ft-input" />
+                      </div>
+                    </div>
+                    <div className="ft-field">
+                      <label className="ft-label">Account</label>
+                      <div className="ft-input-wrap ft-input-wrap--icon">
+                        <span className="ft-input-icon">🏦</span>
+                        <select
+                          value={formOpen === 'income' ? (formData.creditedTo||'') : (formData.paymentMode||'')}
+                          onChange={e => handleFormField(formOpen === 'income' ? 'creditedTo' : 'paymentMode', e.target.value)}
+                          className="ft-input ft-select">
+                          <option value="">Select account</option>
+                          {PAYMENT_METHODS.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row: Source/Payee + Note */}
+                  <div className="ft-popup-row">
+                    <div className="ft-field">
+                      <label className="ft-label">
+                        {formOpen === 'income' ? 'Source' : 'Payee'}
+                        <span className="ft-label-opt"> (optional)</span>
+                      </label>
+                      <div className="ft-input-wrap ft-input-wrap--icon">
+                        <span className="ft-input-icon">👤</span>
+                        <input type="text"
+                          placeholder={formOpen === 'income' ? 'e.g. Employer, Client' : 'e.g. Swiggy, Amazon'}
+                          value={formOpen === 'income' ? (formData.source||'') : (formData.vendor||'')}
+                          onChange={e => handleFormField(formOpen === 'income' ? 'source' : 'vendor', e.target.value)}
+                          className="ft-input" />
+                      </div>
+                    </div>
+                    <div className="ft-field">
+                      <label className="ft-label">Note <span className="ft-label-opt">(optional)</span></label>
+                      <div className="ft-input-wrap">
+                        <input type="text"
+                          placeholder="Add a short note…"
+                          value={formOpen === 'income' ? (formData.remark||'') : (formData.purpose||'')}
+                          onChange={e => handleFormField(formOpen === 'income' ? 'remark' : 'purpose', e.target.value)}
+                          className="ft-input" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Actions */}
+                <div className="ft-popup-actions">
+                  <button type="button" className="ft-btn-cancel" onClick={closeForm}>Cancel</button>
+                  <button
+                    type="submit"
+                    disabled={formSaving}
+                    className={`ft-btn-save ${formOpen === 'income' ? 'ft-btn-save--income' : 'ft-btn-save--expense'}`}
+                  >
+                    {formSaving
+                      ? <><span className="ft-btn-spinner"/>Saving…</>
+                      : `✓ Save ${formOpen === 'income' ? 'Income' : 'Expense'}`}
+                  </button>
+                </div>
+              </form>
+
+              {/* Right: Category Picker */}
+              <div className="ft-popup-cats">
+                <p className="ft-popup-cats-title">Select Category</p>
+                <div className="ft-popup-cat-grid">
+                  {currentCats.map(cat => {
+                    const isActive = formData.category === cat;
+                    const accentColor = formOpen === 'income' ? '#10b981' : '#ef4444';
+                    const accentBg   = formOpen === 'income' ? '#f0fdf4' : '#fef2f2';
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => handleFormField('category', cat)}
+                        className="ft-popup-cat-btn"
+                        style={{
+                          border: `2px solid ${isActive ? accentColor : '#e5e7eb'}`,
+                          background: isActive ? accentBg : '#fff',
+                        }}
+                      >
+                        <span className="ft-popup-cat-emoji">{CATEGORY_ICONS[cat] || '📦'}</span>
+                        <span className="ft-popup-cat-name">{cat}</span>
+                        {isActive && <span className="ft-popup-cat-check" style={{ color: accentColor }}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="ft-loading">
+          <div className="ft-loading-spinner" />
+          <span>Loading {formatMonthDisplay(selectedMonth)}…</span>
+        </div>
+      )}
+
+      {/* ── Metric Cards Row ── */}
+      <div className="ft-metrics-grid">
+        {/* Total Balance */}
+        <div className="ft-metric-card ft-metric-card--balance">
+          <div className="ft-metric-icon ft-metric-icon--blue">🏦</div>
+          <div className="ft-metric-body">
+            <span className="ft-metric-label">Total Balance</span>
+            <div className="ft-metric-value">{INR}{fmtAmt(netSavings)}</div>
+            <div className={`ft-metric-change ${netSavings >= 0 ? 'positive' : 'negative'}`}>
+              {netSavings >= 0 ? '↑' : '↓'} Balance this month
+            </div>
+          </div>
+          <Sparkline data={savingsSparkData} color="#3b82f6" />
+        </div>
+
+        {/* Total Income */}
+        <div className="ft-metric-card ft-metric-card--income">
+          <div className="ft-metric-icon ft-metric-icon--green">💰</div>
+          <div className="ft-metric-body">
+            <span className="ft-metric-label">Total Income</span>
+            <div className="ft-metric-value">{INR}{fmtAmt(totalIncome)}</div>
+            <div className="ft-metric-change positive">
+              ↑ {income.length} transactions
+            </div>
+          </div>
+          <Sparkline data={incomeSparkData} color="#10b981" />
+        </div>
+
+        {/* Total Expenses */}
+        <div className="ft-metric-card ft-metric-card--expense">
+          <div className="ft-metric-icon ft-metric-icon--red">💸</div>
+          <div className="ft-metric-body">
+            <span className="ft-metric-label">Total Expenses</span>
+            <div className="ft-metric-value">{INR}{fmtAmt(totalExpense)}</div>
+            <div className="ft-metric-change negative">
+              ↓ {expenses.length} transactions
+            </div>
+          </div>
+          <Sparkline data={expenseSparkData} color="#ef4444" isPositive={false} />
+        </div>
+
+        {/* Total Savings */}
+        <div className="ft-metric-card ft-metric-card--savings">
+          <div className="ft-metric-icon ft-metric-icon--purple">🐷</div>
+          <div className="ft-metric-body">
+            <span className="ft-metric-label">Total Savings</span>
+            <div className="ft-metric-value">{INR}{fmtAmt(Math.max(netSavings, 0))}</div>
+            <div className={`ft-metric-change ${netSavings >= 0 ? 'positive' : 'negative'}`}>
+              {netSavings >= 0 ? '↑ ' : '↓ '} {totalIncome > 0 ? Math.round((Math.max(netSavings, 0) / totalIncome) * 100) : 0}% of income
+            </div>
+          </div>
+          <Sparkline data={savingsSparkData} color="#a855f7" />
+        </div>
+      </div>
+
+      {/* ── Main 2-Col Layout ── */}
+      <div className="ft-main-grid">
+        {/* Left: Transactions */}
+        <div className="ft-left-col">
+          {/* Recent Transactions */}
+          <div className="ft-card">
+            <div className="ft-card-head">
+              <h3 className="ft-card-title">Recent Transactions</h3>
+              <div className="ft-tx-filter-tabs">
+                {['All', 'Income', 'Expense'].map(f => (
+                  <button
+                    key={f}
+                    className={`ft-filter-tab ${txFilter === f ? 'ft-filter-tab--active' : ''}`}
+                    onClick={() => setTxFilter(f)}
+                  >{f}</button>
+                ))}
+              </div>
+              <button className="ft-view-all" onClick={() => setShowAllTx(v => !v)}>
+                {showAllTx ? 'Show Less' : 'View All ›'}
               </button>
             </div>
-          </div>
-        </div>
-      </div>
 
-      {/* ── Summary Cards ── */}
-      <div className="finance-summary-grid">
-        <div className="finance-summary-card" style={{ borderLeftColor: 'var(--teal)', background: 'var(--teal-soft)' }}>
-          <span>Total Income</span>
-          <strong style={{ color: 'var(--teal)' }}>₹{fmtAmt(totalIncome)}</strong>
-        </div>
-        <div className="finance-summary-card" style={{ borderLeftColor: 'var(--coral)', background: 'var(--coral-soft)' }}>
-          <span>Total Expenses</span>
-          <strong style={{ color: 'var(--coral)' }}>₹{fmtAmt(totalExpense)}</strong>
-        </div>
-        <div
-          className="finance-summary-card"
-          style={{
-            borderLeftColor: balance >= 0 ? 'var(--teal-mid)' : 'var(--rose)',
-            background: balance >= 0 ? 'var(--pine-soft)' : 'var(--rose-soft)'
-          }}
-        >
-          <span>Closing Balance</span>
-          <strong style={{ color: balance >= 0 ? 'var(--pine)' : 'var(--rose)' }}>₹{fmtAmt(balance)}</strong>
-        </div>
-      </div>
+            {/* Search */}
+            <div className="ft-search-wrap">
+              <span className="ft-search-icon">🔍</span>
+              <input
+                type="search"
+                placeholder="Search transactions…"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="ft-search-input"
+              />
+            </div>
 
-      {/* ── Quick Category Filters ── */}
-      <div style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-        <button
-          onClick={() => setSearchTerm('')}
-          style={{
-            padding: '6px 14px',
-            borderRadius: 20,
-            border: !searchTerm ? '2.5px solid var(--teal)' : '1px solid var(--line)',
-            background: !searchTerm ? 'var(--teal-soft)' : 'var(--surface-strong)',
-            color: !searchTerm ? 'var(--teal)' : 'var(--muted)',
-            fontWeight: !searchTerm ? 700 : 500,
-            fontSize: '0.8rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          🏷️ All
-        </button>
-        {CATEGORY_FILTERS.map(cat => {
-          const isActive = searchTerm.toLowerCase() === cat.keyword.toLowerCase();
-          return (
-            <button
-              key={cat.keyword}
-              onClick={() => setSearchTerm(isActive ? '' : cat.keyword)}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 20,
-                border: isActive ? '2.5px solid var(--teal)' : '1px solid var(--line)',
-                background: isActive ? 'var(--teal-soft)' : 'var(--surface-strong)',
-                color: isActive ? 'var(--teal)' : 'var(--muted)',
-                fontWeight: isActive ? 700 : 500,
-                fontSize: '0.8rem',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              {cat.label}
-            </button>
-          );
-        })}
-      </div>
+            {/* Tx Table */}
+            <div className="ft-tx-table-wrap">
+              {allTransactions.length === 0 && !isLoading ? (
+                <div className="ft-empty-state">
+                  <div className="ft-empty-icon">📋</div>
+                  <p>No transactions yet for {formatMonthDisplay(selectedMonth)}</p>
+                  {isAuthorized && (
+                    <button className="ft-add-btn-sm" onClick={() => openForm('income')}>
+                      ＋ Add your first transaction
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <table className="ft-tx-table">
+                    <thead>
+                      <tr>
+                        <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('date')}>
+                          Date {sortField === 'date' && (sortDirection === 'asc' ? ' ▲' : ' ▼')}
+                        </th>
+                        <th>Description</th>
+                        <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('category')}>
+                          Category {sortField === 'category' && (sortDirection === 'asc' ? ' ▲' : ' ▼')}
+                        </th>
+                        <th>Account</th>
+                        <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('amount')}>
+                          Amount {sortField === 'amount' && (sortDirection === 'asc' ? ' ▲' : ' ▼')}
+                        </th>
+                        {isAuthorized && <th style={{ width: 80, textAlign: 'right' }}>Actions</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayTx.map(tx => {
+                        const isIncome = tx._type === 'income';
+                        const name = isIncome ? (tx.source || '—') : (tx.vendor || '—');
+                        const sub = isIncome ? (tx.remark || tx.category) : (tx.purpose || tx.category);
+                        const account = isIncome ? tx.creditedTo : tx.paymentMode;
+                        const amount = toNum(tx.amount);
+                        const cat = tx.category || (isIncome ? 'Income' : 'Expense');
+                        const dateStr = tx.date ? parseLocalDate(tx.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
-      {/* ── View Tabs & Search/Filter Row (Merged to save space) ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, borderBottom: '1px solid var(--line)', paddingBottom: 0, marginBottom: 12, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button 
-            onClick={() => setActiveViewTab('income')}
-            style={{
-              padding: '8px 16px',
-              fontWeight: activeViewTab === 'income' ? 700 : 500,
-              color: activeViewTab === 'income' ? 'var(--teal)' : 'var(--muted)',
-              borderBottom: activeViewTab === 'income' ? '3px solid var(--teal)' : '3px solid transparent',
-              background: 'none',
-              borderTop: 'none',
-              borderLeft: 'none',
-              borderRight: 'none',
-              cursor: 'pointer',
-              fontSize: '0.95rem',
-              transition: 'all 0.2s'
-            }}
-          >
-            Income
-          </button>
-          <button 
-            onClick={() => setActiveViewTab('expense')}
-            style={{
-              padding: '8px 16px',
-              fontWeight: activeViewTab === 'expense' ? 700 : 500,
-              color: activeViewTab === 'expense' ? 'var(--coral)' : 'var(--muted)',
-              borderBottom: activeViewTab === 'expense' ? '3px solid var(--coral)' : '3px solid transparent',
-              background: 'none',
-              borderTop: 'none',
-              borderLeft: 'none',
-              borderRight: 'none',
-              cursor: 'pointer',
-              fontSize: '0.95rem',
-              transition: 'all 0.2s'
-            }}
-          >
-            Expenses
-          </button>
-          <button 
-            onClick={() => setActiveViewTab('compare')}
-            style={{
-              padding: '8px 16px',
-              fontWeight: activeViewTab === 'compare' ? 700 : 500,
-              color: activeViewTab === 'compare' ? 'var(--purple)' : 'var(--muted)',
-              borderBottom: activeViewTab === 'compare' ? '3px solid var(--purple)' : '3px solid transparent',
-              background: 'none',
-              borderTop: 'none',
-              borderLeft: 'none',
-              borderRight: 'none',
-              cursor: 'pointer',
-              fontSize: '0.95rem',
-              transition: 'all 0.2s'
-            }}
-          >
-            Compare
-          </button>
-        </div>
+                        return (
+                          <tr key={tx._key} className="ft-tx-row">
+                            <td className="ft-tx-date">{dateStr}</td>
+                            <td>
+                              <div className="ft-tx-name-wrap">
+                                <span className="ft-tx-cat-icon">{CATEGORY_ICONS[cat] || '💳'}</span>
+                                <div>
+                                  <div className="ft-tx-name">{name}</div>
+                                  {sub && <div className="ft-tx-sub">{sub}</div>}
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <span className="ft-tx-cat-pill" style={{ background: (CATEGORY_COLORS[cat] || '#6b7280') + '22', color: CATEGORY_COLORS[cat] || '#6b7280' }}>
+                                {cat}
+                              </span>
+                            </td>
+                            <td className="ft-tx-account">
+                              {account ? (
+                                <span className="ft-tx-account-chip">
+                                  🏦 {account}
+                                </span>
+                              ) : '—'}
+                            </td>
 
-        <div style={{ paddingBottom: 6 }}>
-          <input 
-            type="search" 
-            className="finance-register-input" 
-            placeholder="🔍 Search transactions (e.g. Swiggy)..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ width: '100%', minWidth: '240px', maxWidth: '350px', background: '#fff', border: '1px solid var(--line)', padding: '6px 12px', borderRadius: '8px' }}
-          />
-        </div>
-      </div>
-
-      {/* ── Tables ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: activeViewTab === 'compare' ? 'repeat(auto-fit, minmax(min(100%, 480px), 1fr))' : '1fr', gap: 20 }}>
-
-        {/* Income Table */}
-        {(activeViewTab === 'income' || activeViewTab === 'compare') && (
-          <div className="table-card" style={{ height: 'fit-content', overflow: 'hidden' }}>
-            <div className="finance-table-section-header" style={{ borderBottom: '1px solid var(--line)' }}>
-              <h4 style={{ color: 'var(--teal)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span>📥</span> Income Details
-                <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--muted)' }}>
-                  (₹{fmtAmt(totalIncome)})
-                </span>
-              </h4>
-              {isAuthorized && (
-                <button className="btn btn--secondary btn--sm" onClick={addIncomeRow}>+ Add Row</button>
+                            <td style={{ textAlign: 'right' }}>
+                              <span className={`ft-tx-amount ${isIncome ? 'ft-tx-amount--income' : 'ft-tx-amount--expense'}`}>
+                                {isIncome ? '+' : '-'}{INR}{fmtAmt(amount)}
+                              </span>
+                            </td>
+                            {isAuthorized && (
+                              <td>
+                                <div className="ft-tx-actions">
+                                  <button
+                                    className="ft-tx-action-btn ft-tx-action-btn--edit"
+                                    onClick={() => openForm(tx._type, tx._idx)}
+                                    title="Edit"
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button
+                                    className="ft-tx-action-btn ft-tx-action-btn--delete"
+                                    onClick={() => tx._type === 'income' ? removeIncome(tx._idx) : removeExpense(tx._idx)}
+                                    title="Remove"
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {allTransactions.length > 7 && !showAllTx && (
+                    <button className="ft-load-more" onClick={() => setShowAllTx(true)}>
+                      Show {allTransactions.length - 7} more transactions
+                    </button>
+                  )}
+                </>
               )}
             </div>
-            <div className="mq-table-wrap">
-              <table className="mq-table">
-                <thead>
-                  <tr>
-                    <th className="mq-col-index">#</th>
-                    <th>DETAILS</th>
-                    <th>CATEGORY</th>
-                    <th>CREDITED TO</th>
-                    <th>DATE</th>
-                    <th style={{ textAlign: 'right' }}>AMOUNT (₹)</th>
-                    <th style={{ width: 40 }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {income.map((row, i) => {
-                    const isMatch = !searchTerm || 
-                      (row.date || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      (row.source || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-                      (row.remark || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      String(row.amount || '').includes(searchTerm);
-                    
-                    if (!isMatch) return null;
+          </div>
 
-                    return (
-                      <tr key={i}>
-                        <td className="mq-col-index">{i + 1}</td>
-                        <td style={{ minWidth: 200 }}>
-                          <div className="mq-details-cell">
-                            <input
-                              className="mq-input-title"
-                              value={row.source}
-                              onChange={e => updateIncome(i, 'source', e.target.value)}
-                              placeholder="Income Source"
-                              readOnly={!isAuthorized}
-                            />
-                            <input
-                              className="mq-input-subtitle"
-                              value={row.remark}
-                              onChange={e => updateIncome(i, 'remark', e.target.value)}
-                              placeholder="Type / Remark"
-                              readOnly={!isAuthorized}
-                            />
-                          </div>
-                        </td>
-                        <td style={{ minWidth: 120 }}>
-                          <input
-                            className="mq-input-normal"
-                            value={row.category || ''}
-                            onChange={e => updateIncome(i, 'category', e.target.value)}
-                            placeholder="Category"
-                            readOnly={!isAuthorized}
-                          />
-                        </td>
-                        <td style={{ minWidth: 120 }}>
-                          <input
-                            className="mq-input-normal"
-                            value={row.creditedTo || ''}
-                            onChange={e => updateIncome(i, 'creditedTo', e.target.value)}
-                            placeholder="Bank / Wallet"
-                            readOnly={!isAuthorized}
-                          />
-                        </td>
-                        <td style={{ minWidth: 140 }}>
-                          <input
-                            className="mq-input-normal"
-                            value={row.date || ''}
-                            onChange={e => updateIncome(i, 'date', e.target.value)}
-                            placeholder="DD/MM/YYYY"
-                            readOnly={!isAuthorized}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            className="mq-input-amount"
-                            value={row.amount}
-                            onChange={e => updateIncome(i, 'amount', e.target.value)}
-                            placeholder="0.00"
-                            type="number"
-                            min="0"
-                            readOnly={!isAuthorized}
-                          />
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          {isAuthorized && (
-                            <button onClick={() => removeIncome(i)} className="finance-remove-btn" title="Remove row">✕</button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  <tr style={{ background: 'var(--teal-soft)', fontWeight: 700 }}>
-                    <td></td>
-                    <td colSpan={3} style={{ color: 'var(--teal)', borderTop: '1px solid var(--line)' }}>TOTAL INCOME</td>
-                    <td style={{ borderTop: '1px solid var(--line)' }}></td>
-                    <td style={{ textAlign: 'right', color: 'var(--teal)', borderTop: '1px solid var(--line)' }}>₹{fmtAmt(totalIncome)}</td>
-                    <td style={{ borderTop: '1px solid var(--line)' }}></td>
-                  </tr>
-                </tbody>
-              </table>
+          {/* Bottom Stats Row */}
+          <div className="ft-stats-row">
+            {/* Cash Flow Donut */}
+            <div className="ft-card ft-card--half">
+              <div className="ft-card-head">
+                <h3 className="ft-card-title">Cash Flow Summary</h3>
+                <span className="ft-card-badge">This Month</span>
+              </div>
+              <div className="ft-cashflow-body">
+                <div style={{ width: 160, height: 160, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <PieChart width={160} height={160}>
+                    <Pie data={[
+                      { name: 'Income', value: totalIncome || 0.01 },
+                      { name: 'Expenses', value: totalExpense || 0.01 },
+                      { name: 'Savings', value: Math.max(netSavings, 0) || 0.01 },
+                    ]} cx={80} cy={80} innerRadius={45} outerRadius={70} dataKey="value" paddingAngle={2}>
+                      <Cell fill="#10b981" />
+                      <Cell fill="#ef4444" />
+                      <Cell fill="#3b82f6" />
+                    </Pie>
+                    <Tooltip formatter={(v) => `${INR}${fmtAmt(v)}`} />
+                  </PieChart>
+                </div>
+                <div className="ft-cashflow-legend">
+                  {[
+                    { label: 'Total Income', value: totalIncome, color: '#10b981' },
+                    { label: 'Total Expenses', value: totalExpense, color: '#ef4444' },
+                    { label: 'Savings', value: Math.max(netSavings, 0), color: '#3b82f6' },
+                  ].map(item => (
+                    <div key={item.label} className="ft-legend-item">
+                      <span className="ft-legend-dot" style={{ background: item.color }} />
+                      <div>
+                        <div className="ft-legend-label">{item.label}</div>
+                        <div className="ft-legend-val">{INR}{fmtAmt(item.value)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Monthly Trend */}
+            <div className="ft-card ft-card--half">
+              <div className="ft-card-head">
+                <h3 className="ft-card-title">Weekly Trend</h3>
+                <span className="ft-card-badge">This Month</span>
+              </div>
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart data={weeklyData} barSize={14} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${INR}${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
-        )}
+        </div>
 
-        {/* Expense Table */}
-        {(activeViewTab === 'expense' || activeViewTab === 'compare') && (
-          <div className="table-card" style={{ height: 'fit-content', overflow: 'hidden' }}>
-            <div className="finance-table-section-header" style={{ borderBottom: '1px solid var(--line)' }}>
-              <h4 style={{ color: 'var(--coral)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span>📤</span> Expense Details
-                <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--muted)' }}>
-                  (₹{fmtAmt(totalExpense)})
-                </span>
-              </h4>
-              {isAuthorized && (
-                <button className="btn btn--secondary btn--sm" onClick={addExpenseRow}>+ Add Row</button>
-              )}
+        {/* Right: Charts & Budget */}
+        <div className="ft-right-col">
+          {/* Expense by Category Donut */}
+          <div className="ft-card">
+            <div className="ft-card-head">
+              <h3 className="ft-card-title">Expense by Category</h3>
+              <span className="ft-card-badge">This Month</span>
             </div>
-            <div className="mq-table-wrap">
-              <table className="mq-table">
-                <thead>
-                  <tr>
-                    <th className="mq-col-index">#</th>
-                    <th>DETAILS</th>
-                    <th>CATEGORY</th>
-                    <th>PAYMENT MODE</th>
-                    <th>REF NO</th>
-                    <th>DATE</th>
-                    <th style={{ textAlign: 'right' }}>AMOUNT (₹)</th>
-                    <th style={{ width: 40 }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {expenses.map((row, i) => {
-                    const isMatch = !searchTerm || 
-                      (row.date || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      (row.vendor || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-                      (row.purpose || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      String(row.amount || '').includes(searchTerm);
-                    
-                    if (!isMatch) return null;
-
+            {expenseByCategory.length > 0 ? (
+              <div className="ft-pie-body">
+                <div style={{ width: 180, height: 180, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <PieChart width={180} height={180}>
+                    <Pie
+                      data={expenseByCategory}
+                      cx={90}
+                      cy={90}
+                      innerRadius={50}
+                      outerRadius={80}
+                      dataKey="value"
+                      paddingAngle={2}
+                    >
+                      {expenseByCategory.map((entry, i) => (
+                        <Cell key={i} fill={CATEGORY_COLORS[entry.name] || `hsl(${i * 40}, 70%, 60%)`} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v) => `${INR}${fmtAmt(v)}`} />
+                  </PieChart>
+                </div>
+                <div className="ft-pie-legend">
+                  {expenseByCategory.slice(0, 6).map((item, i) => {
+                    const color = CATEGORY_COLORS[item.name] || `hsl(${i * 40}, 70%, 60%)`;
+                    const pct = totalExpense > 0 ? ((item.value / totalExpense) * 100).toFixed(1) : 0;
                     return (
-                      <tr key={i}>
-                        <td className="mq-col-index">{i + 1}</td>
-                        <td style={{ minWidth: 200 }}>
-                          <div className="mq-details-cell">
-                            <input
-                              className="mq-input-title"
-                              value={row.vendor}
-                              onChange={e => updateExpense(i, 'vendor', e.target.value)}
-                              placeholder="Vendor / Payee"
-                              readOnly={!isAuthorized}
-                            />
-                            <input
-                              className="mq-input-subtitle"
-                              value={row.purpose}
-                              onChange={e => updateExpense(i, 'purpose', e.target.value)}
-                              placeholder="Purpose"
-                              readOnly={!isAuthorized}
-                            />
-                          </div>
-                        </td>
-                        <td style={{ minWidth: 120 }}>
-                          <input
-                            className="mq-input-normal"
-                            value={row.category || ''}
-                            onChange={e => updateExpense(i, 'category', e.target.value)}
-                            placeholder="Category"
-                            readOnly={!isAuthorized}
-                          />
-                        </td>
-                        <td style={{ minWidth: 120 }}>
-                          <input
-                            className="mq-input-normal"
-                            value={row.paymentMode || ''}
-                            onChange={e => updateExpense(i, 'paymentMode', e.target.value)}
-                            placeholder="e.g. UPI, CC"
-                            readOnly={!isAuthorized}
-                          />
-                        </td>
-                        <td style={{ minWidth: 100 }}>
-                          <input
-                            className="mq-input-normal"
-                            value={row.refNo || ''}
-                            onChange={e => updateExpense(i, 'refNo', e.target.value)}
-                            placeholder="Ref / Bill No"
-                            readOnly={!isAuthorized}
-                          />
-                        </td>
-                        <td style={{ minWidth: 140 }}>
-                          <input
-                            className="mq-input-normal"
-                            value={row.date || ''}
-                            onChange={e => updateExpense(i, 'date', e.target.value)}
-                            placeholder="DD/MM/YYYY"
-                            readOnly={!isAuthorized}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            className="mq-input-amount"
-                            value={row.amount}
-                            onChange={e => updateExpense(i, 'amount', e.target.value)}
-                            placeholder="0.00"
-                            type="number"
-                            min="0"
-                            readOnly={!isAuthorized}
-                          />
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          {isAuthorized && (
-                            <button onClick={() => removeExpense(i)} className="finance-remove-btn" title="Remove row">✕</button>
-                          )}
-                        </td>
-                      </tr>
+                      <div key={item.name} className="ft-pie-legend-item">
+                        <span className="ft-legend-dot" style={{ background: color }} />
+                        <span className="ft-pie-cat">{item.name}</span>
+                        <span className="ft-pie-val">{INR}{fmtAmt(item.value)}</span>
+                        <span className="ft-pie-pct">{pct}%</span>
+                      </div>
                     );
                   })}
-                  {cyclePurchases.map((order, i) => {
-                    const isMatch = !searchTerm || 
-                      (order.date || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      (order.seller || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
-                      String(order.totalAmount || '').includes(searchTerm);
-                    
-                    if (!isMatch) return null;
+                </div>
+              </div>
+            ) : (
+              <div className="ft-empty-state" style={{ padding: '24px 0' }}>
+                <div className="ft-empty-icon">📊</div>
+                <p>No expense data yet</p>
+              </div>
+            )}
+          </div>
 
-                    return (
-                      <tr key={`purchase-${i}`} style={{ backgroundColor: 'var(--rose-soft)' }}>
-                        <td className="mq-col-index">{expenses.length + i + 1}</td>
-                        <td style={{ minWidth: 200 }}>
-                          <div className="mq-details-cell" style={{ marginLeft: '8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontSize: '14px', fontWeight: 700, color: '#18181b' }}>{order.seller}</span>
-                              <span className="mq-pill red">Purchases</span>
-                            </div>
-                            <span style={{ fontSize: '12px', color: '#71717a' }}>{order.items ? `${order.items.length} items` : 'Order'}</span>
-                          </div>
-                        </td>
-                        <td style={{ color: '#a1a1aa', fontSize: '13px' }}>—</td>
-                        <td style={{ color: '#a1a1aa', fontSize: '13px' }}>—</td>
-                        <td style={{ color: '#a1a1aa', fontSize: '13px' }}>—</td>
-                        <td style={{ minWidth: 140, color: '#3f3f46', paddingLeft: '8px' }}>
-                          {order.date}
-                        </td>
-                        <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '14px', color: '#18181b', paddingRight: '8px' }}>
-                          ₹{order.totalAmount}
-                        </td>
-                        <td></td>
-                      </tr>
-                    );
-                  })}
-                  <tr style={{ background: 'var(--coral-soft)', fontWeight: 700 }}>
-                    <td></td>
-                    <td colSpan={4} style={{ color: 'var(--coral)', borderTop: '1px solid var(--line)' }}>TOTAL EXPENSES</td>
-                    <td style={{ borderTop: '1px solid var(--line)' }}></td>
-                    <td style={{ textAlign: 'right', color: 'var(--coral)', borderTop: '1px solid var(--line)' }}>₹{fmtAmt(totalExpense)}</td>
-                    <td style={{ borderTop: '1px solid var(--line)' }}></td>
-                  </tr>
-                </tbody>
-              </table>
+          {/* Income vs Expense Bar */}
+          <div className="ft-card">
+            <div className="ft-card-head">
+              <h3 className="ft-card-title">Income vs Expense</h3>
+              <span className="ft-card-badge">This Month</span>
+            </div>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={weeklyData} barSize={16} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${INR}${v >= 1000 ? `${(v / 1000).toFixed(0)}L` : v}`} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: '0.75rem' }} />
+                <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="ft-summary-mini-row">
+              <div className="ft-summary-mini">
+                <span className="ft-summary-mini-icon" style={{ background: '#eff6ff' }}>📊</span>
+                <div>
+                  <div className="ft-summary-mini-label">Avg Daily Expense</div>
+                  <div className="ft-summary-mini-val">{INR}{fmtAmt(avgDailyExpense)}</div>
+                  <div className="ft-metric-change negative">↓ per day</div>
+                </div>
+              </div>
+              <div className="ft-summary-mini">
+                <span className="ft-summary-mini-icon" style={{ background: '#f0fdf4' }}>⭐</span>
+                <div>
+                  <div className="ft-summary-mini-label">Total Saved</div>
+                  <div className="ft-summary-mini-val">{INR}{fmtAmt(Math.max(netSavings, 0))}</div>
+                  <div className="ft-metric-change positive">↑ this month</div>
+                </div>
+              </div>
             </div>
           </div>
-        )}
-      </div>
 
-      {/* ── Closing Balance Footer (Styled compactly) ── */}
-      <div className="finance-balance-footer" style={{
-        padding: '12px 20px',
-        borderRadius: '12px',
-        border: '1px solid var(--line)',
-        background: balance >= 0 ? 'var(--pine-soft)' : 'var(--rose-soft)'
-      }}>
-        <div style={{ textAlign: 'right', width: '100%' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 600 }}>
-            Closing Balance ({formatMonthFull(selectedMonth)})
-          </span>
-          <h3 style={{ margin: 0, fontSize: '1.5rem', color: balance >= 0 ? 'var(--pine)' : 'var(--rose)' }}>
-            ₹{fmtAmt(balance)}
-          </h3>
+          {/* Budget Overview */}
+          <div className="ft-card">
+            <div className="ft-card-head">
+              <h3 className="ft-card-title">Budget Overview</h3>
+              <span className="ft-card-badge">This Month</span>
+            </div>
+            <div className="ft-budget-list">
+              {budgetData.map(b => (
+                <BudgetBar key={b.category} {...b} />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
-
     </div>
   );
 }

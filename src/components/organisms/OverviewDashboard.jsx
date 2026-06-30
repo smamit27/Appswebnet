@@ -4,7 +4,6 @@ import ProgressBar from '../atoms/ProgressBar.jsx';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
 } from 'recharts';
-import { MOCK_ORDERS } from './PurchasesTracker.jsx';
 
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 const fmt = (v) => INR.format(v || 0);
@@ -27,22 +26,9 @@ export default function OverviewDashboard({ financeItems, gymItems, activityItem
     financeItems.filter(t => (t.date || '').startsWith(thisMonth)),
     [financeItems, thisMonth]
   );
-  const purchasesTotal = useMemo(() => {
-    let total = 0;
-    for (const order of MOCK_ORDERS) {
-      const d = new Date(order.date);
-      if (d.getDate() >= 25) d.setMonth(d.getMonth() + 1);
-      const cycleMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (cycleMonth === thisMonth) {
-        total += (order.totalAmount || 0);
-      }
-    }
-    return total;
-  }, [thisMonth]);
 
   const totalIncome  = monthFinance.filter(t => t.type === 'Income').reduce((s, t) => s + (t.amount || 0), 0);
-  const totalExpenseRaw = monthFinance.filter(t => t.type === 'Expense').reduce((s, t) => s + (t.amount || 0), 0);
-  const totalExpense = totalExpenseRaw + purchasesTotal;
+  const totalExpense = monthFinance.filter(t => t.type === 'Expense').reduce((s, t) => s + (t.amount || 0), 0);
   const netSavings   = totalIncome - totalExpense;
 
   const thisWeekStart = new Date();

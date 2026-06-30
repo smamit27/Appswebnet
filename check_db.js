@@ -19,16 +19,12 @@ async function check() {
   const snap = await getDoc(docRef);
   if (snap.exists()) {
     const data = snap.data();
-    console.log("Found family_2026-07:", JSON.stringify(data.expenses, null, 2));
-    
-    // filter out the duplicate blinkit
-    const newExpenses = data.expenses.filter(e => !(e.purpose && e.purpose.includes('BLK-2258608602')));
-    if (newExpenses.length < data.expenses.length) {
-       await updateDoc(docRef, { expenses: newExpenses });
-       console.log("Removed duplicate BLK-2258608602 from expenses!");
-    } else {
-       console.log("No duplicate BLK-2258608602 found in expenses.");
-    }
+    console.log("ALL_INCOME_START");
+    console.log(JSON.stringify(data.income || [], null, 2));
+    console.log("ALL_INCOME_END");
+    console.log("ALL_EXPENSES_START");
+    console.log(JSON.stringify(data.expenses || [], null, 2));
+    console.log("ALL_EXPENSES_END");
   } else {
     console.log("No family_2026-07 doc found.");
   }

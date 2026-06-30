@@ -15,7 +15,6 @@ import AmishiFees        from './components/organisms/AmishiFees.jsx';
 import DietPlan          from './components/organisms/DietPlan.jsx';
 import FamilyCalendar    from './components/organisms/FamilyCalendar.jsx';
 import CleaningSchedule  from './components/organisms/CleaningSchedule.jsx';
-import PurchasesTracker  from './components/organisms/PurchasesTracker.jsx';
 import { db } from './firebase.js';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -71,12 +70,6 @@ const ICONS = {
       <path d="M12 12v6"/><path d="M12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/>
     </svg>
   ),
-  purchases: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
-      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-    </svg>
-  ),
   fees: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
@@ -98,8 +91,7 @@ const ICONS = {
 const NAV = [
   { group: 'Home',   items: [{ id: 'overview',  label: 'Overview'       }] },
   { group: 'Finance',items: [
-    { id: 'finance',   label: 'Income & Expenses' },
-    { id: 'purchases', label: 'Purchases Tracker' }
+    { id: 'finance',   label: 'Income & Expenses' }
   ] },
   { group: 'Amit', items: [
     { id: 'amitDiet', label: 'Gym & Diet', iconId: 'diet' }
@@ -282,7 +274,7 @@ export default function App() {
             )}
 
             {activeTab === 'finance' && (
-              <FinancePage isAuthorized={isAuthorized} />
+              <FinancePage isAuthorized={isAuthorized} user={user} />
             )}
 
 
@@ -319,10 +311,6 @@ export default function App() {
 
             {activeTab === 'cleaning' && (
               <CleaningSchedule />
-            )}
-
-            {activeTab === 'purchases' && (
-              <PurchasesTracker />
             )}
           </div>
         </main>

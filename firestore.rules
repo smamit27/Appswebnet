@@ -27,6 +27,12 @@ service cloud.firestore {
       allow write: if isAuthorized();
     }
 
+    // Family monthly finance records
+    match /financeMonthly_family/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isAuthorized();
+    }
+
     // Gym activity (Amit, Sweta, Amishi)
     match /activities/{person}/gym/{docId} {
       allow read: if request.auth != null;
@@ -47,6 +53,18 @@ service cloud.firestore {
 
     // Family events calendar
     match /family/events/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+
+    // Root familyEvents calendar
+    match /familyEvents/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+
+    // Purchases tracker records
+    match /purchases/{docId} {
       allow read: if request.auth != null;
       allow write, delete: if isAuthorized();
     }
