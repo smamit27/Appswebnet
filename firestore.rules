@@ -69,6 +69,65 @@ service cloud.firestore {
       allow write, delete: if isAuthorized();
     }
 
+    // Lendings tracker records
+    match /lendings/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+
+    // Future purchases wishlist
+    match /future_purchases/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+
+    // Portfolio tracker collections
+    match /portfolio/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+    match /holdings/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+    match /transactions/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+    match /mutualFunds/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+    match /stocks/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+    match /portfolioSummary/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+    match /watchlist/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+    match /settings/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+    match /monthlySnapshots/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+    match /corporateActions/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+    match /dividends/{docId} {
+      allow read: if request.auth != null;
+      allow write, delete: if isAuthorized();
+    }
+
+
     // Family member profiles
     match /family/members/{docId} {
       allow read: if request.auth != null;

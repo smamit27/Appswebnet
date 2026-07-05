@@ -19,7 +19,7 @@ function getMonthName(date = new Date()) {
   return date.toLocaleString('en-IN', { month: 'long', year: 'numeric' });
 }
 
-export default function OverviewDashboard({ financeItems, gymItems, activityItems, calendarItems }) {
+export default function OverviewDashboard({ financeItems, gymItems, activityItems, calendarItems, portfolioSummary, onNavigate }) {
   const thisMonth = new Date().toISOString().slice(0, 7);
 
   const monthFinance = useMemo(() =>
@@ -96,6 +96,14 @@ export default function OverviewDashboard({ financeItems, gymItems, activityItem
 
       {/* Metric Cards */}
       <div className="metrics-grid">
+        <MetricCard
+          label="Investment Portfolio"
+          value={portfolioSummary ? fmt(portfolioSummary.totalCurrent) : "₹0"}
+          detail={portfolioSummary ? `Invested: ${fmt(portfolioSummary.totalInvested)}` : "Upload NSDL CAS statement"}
+          icon="💼"
+          tone="purple"
+          onClick={() => onNavigate && onNavigate('portfolio')}
+        />
         <MetricCard
           label="Income this Month"
           value={fmt(totalIncome)}

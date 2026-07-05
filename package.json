@@ -11,11 +11,15 @@
     "deploy:full": "npm run build && npx firebase-tools deploy --only hosting,firestore:rules,firestore:indexes"
   },
   "dependencies": {
+    "@google/genai": "^2.10.0",
     "firebase": "^12.15.0",
     "gsap": "^3.15.0",
+    "lucide-react": "^1.23.0",
+    "pdfjs-dist": "^6.1.200",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-is": "^19.2.7",
+    "react-markdown": "^10.1.0",
     "recharts": "^3.8.1",
     "xlsx": "^0.18.5"
   },

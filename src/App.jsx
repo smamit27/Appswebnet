@@ -10,13 +10,18 @@ import AuthModal         from './components/organisms/AuthModal.jsx';
 import OverviewDashboard from './components/organisms/OverviewDashboard.jsx';
 import FinancePage       from './components/organisms/FinancePage.jsx';
 import GymTracker        from './components/organisms/GymTracker.jsx';
+import LendingTracker    from './components/organisms/LendingTracker.jsx';
+import FuturePurchases   from './components/organisms/FuturePurchases.jsx';
+import PortfolioPage     from './components/organisms/Portfolio/PortfolioPage.jsx';
 import AmishiActivity    from './components/organisms/AmishiActivity.jsx';
 import AmishiFees        from './components/organisms/AmishiFees.jsx';
 import DietPlan          from './components/organisms/DietPlan.jsx';
 import FamilyCalendar    from './components/organisms/FamilyCalendar.jsx';
 import CleaningSchedule  from './components/organisms/CleaningSchedule.jsx';
 import { db } from './firebase.js';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import AIChatButton from './components/organisms/AIChatButton.jsx';
+import AIChatWindow from './components/organisms/AIChatWindow.jsx';
 
 /* ── Tab Icons ─────────────────────────────────────────────────── */
 const ICONS = {
@@ -30,6 +35,24 @@ const ICONS = {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="1" x2="12" y2="23"/>
       <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+    </svg>
+  ),
+  lending: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="10" cy="8" r="5" />
+      <path d="M22 20c0-3.37-3.58-6-8-6s-8 2.63-8 6" />
+      <line x1="16" y1="11" x2="22" y2="11" />
+    </svg>
+  ),
+  wishlist: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+    </svg>
+  ),
+  portfolio: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+      <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
     </svg>
   ),
   gym: (
@@ -91,7 +114,10 @@ const ICONS = {
 const NAV = [
   { group: 'Home',   items: [{ id: 'overview',  label: 'Overview'       }] },
   { group: 'Finance',items: [
-    { id: 'finance',   label: 'Income & Expenses' }
+    { id: 'finance',   label: 'Income & Expenses' },
+    { id: 'lending',   label: 'Money Lent' },
+    { id: 'wishlist',  label: 'Future Purchases' },
+    { id: 'portfolio', label: 'Investment Portfolio' }
   ] },
   { group: 'Amit', items: [
     { id: 'amitDiet', label: 'Gym & Diet', iconId: 'diet' }
@@ -117,6 +143,7 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [feesSession, setFeesSession]         = useState('2026-27');
+  const [isAIChatOpen, setIsAIChatOpen]       = useState(false);
 
   // Real-time Firestore collections
   const amitGym  = useCollection('activities/amit/gym',     [],   user);
@@ -127,6 +154,21 @@ export default function App() {
 
   // For the Overview we need a quick summary of finance — fetch latest month snapshot
   const [financeSnap, setFinanceSnap] = useState({ swetaIncome: 0, swetaExpense: 0, amitIncome: 0, amitExpense: 0 });
+  const [portfolioSummary, setPortfolioSummary] = useState(null);
+
+  useEffect(() => {
+    if (!db || !user) return;
+    const unsub = onSnapshot(doc(db, 'portfolioSummary', 'family_summary'), (snap) => {
+      if (snap.exists()) {
+        setPortfolioSummary(snap.data());
+      } else {
+        setPortfolioSummary(null);
+      }
+    }, (error) => {
+      console.warn("App portfolioSummary listener error:", error);
+    });
+    return () => unsub();
+  }, [user]);
 
   const handleTabChange = useCallback((tabId) => {
     if (tabId === activeTab) return;
@@ -270,11 +312,25 @@ export default function App() {
                 gymItems={[...amitGym.items, ...swetaGym.items]}
                 activityItems={activity.items}
                 calendarItems={calendar.items}
+                portfolioSummary={portfolioSummary}
+                onNavigate={handleTabChange}
               />
             )}
 
             {activeTab === 'finance' && (
               <FinancePage isAuthorized={isAuthorized} user={user} />
+            )}
+
+            {activeTab === 'lending' && (
+              <LendingTracker isAuthorized={isAuthorized} user={user} />
+            )}
+
+            {activeTab === 'wishlist' && (
+              <FuturePurchases isAuthorized={isAuthorized} user={user} />
+            )}
+
+            {activeTab === 'portfolio' && (
+              <PortfolioPage isAuthorized={isAuthorized} user={user} />
             )}
 
 
@@ -324,6 +380,9 @@ export default function App() {
         onSignIn={signInWithGoogle}
         onSignOut={logout}
       />
+
+      <AIChatButton isOpen={isAIChatOpen} onClick={() => setIsAIChatOpen(!isAIChatOpen)} />
+      <AIChatWindow isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} />
     </>
   );
 }

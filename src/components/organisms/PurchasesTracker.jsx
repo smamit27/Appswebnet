@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../../firebase.js';
 import './PurchasesTracker.css';
+import ConfirmDeleteModal from '../molecules/ConfirmDeleteModal.jsx';
+import ToastNotification from '../molecules/ToastNotification.jsx';
 
 export function parseLocalDate(dateStr) {
   if (!dateStr) return new Date();
@@ -323,8 +325,17 @@ export default function PurchasesTracker({ purchases, isAuthorized, user }) {
     }
   };
 
-  const handleDeletePurchase = async (order) => {
-    if (!confirm(`Are you sure you want to delete purchase: "${order.id}"?`)) return;
+  const [deleteOrder, setDeleteOrder] = useState(null); // stores order object
+  const [toast, setToast] = useState({ message: '', type: 'success' });
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteOrder) return;
+    const order = deleteOrder;
+    setDeleteOrder(null);
 
     if (ensureFirebaseWriteAccess('delete purchases')) {
       try {
@@ -332,7 +343,7 @@ export default function PurchasesTracker({ purchases, isAuthorized, user }) {
         await deleteDoc(orderRef);
       } catch (err) {
         console.error('Failed to delete purchase from Firestore:', err);
-        alert('Failed to delete purchase: ' + err.message);
+        showToast('Failed to delete purchase: ' + err.message, 'error');
         return;
       }
 
@@ -356,6 +367,8 @@ export default function PurchasesTracker({ purchases, isAuthorized, user }) {
       } catch (err) {
         console.error('Failed to remove sync in family finance:', err);
       }
+      
+      showToast('Purchase deleted successfully.', 'success');
     }
   };
 
@@ -481,7 +494,7 @@ export default function PurchasesTracker({ purchases, isAuthorized, user }) {
                   </td>
                   <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <button className="btn btn--secondary btn--sm" style={{ padding: '4px 8px', marginRight: '4px', fontSize: '0.75rem' }} onClick={() => startEditing(order)}>Edit</button>
-                    <button className="btn btn--danger btn--sm" style={{ padding: '4px 8px', fontSize: '0.75rem' }} onClick={() => handleDeletePurchase(order)}>Delete</button>
+                    <button className="btn btn--danger btn--sm" style={{ padding: '4px 8px', fontSize: '0.75rem' }} onClick={() => setDeleteOrder(order)}>Delete</button>
                   </td>
                 </tr>
                 {expandedOrder === order.id && (
@@ -557,6 +570,18 @@ export default function PurchasesTracker({ purchases, isAuthorized, user }) {
           </tbody>
         </table>
       </div>
+
+      <ConfirmDeleteModal
+        isOpen={deleteOrder !== null}
+        onClose={() => setDeleteOrder(null)}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <ToastNotification
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast({ message: '', type: 'success' })}
+      />
     </div>
   );
 }

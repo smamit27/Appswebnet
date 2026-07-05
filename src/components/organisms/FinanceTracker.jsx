@@ -8,6 +8,8 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend
 } from 'recharts';
 import '../../finance.css';
+import ConfirmDeleteModal from '../molecules/ConfirmDeleteModal.jsx';
+import ToastNotification from '../molecules/ToastNotification.jsx';
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 const FINANCIAL_YEAR_MONTHS = Array.from({ length: 12 }, (_, i) => {
@@ -556,16 +558,48 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
     }
   };
 
-  const removeIncome = (i) => {
-    const next = income.filter((_, idx) => idx !== i);
-    setIncome(next);
-    triggerAutoSave(next, expenses);
+  const [deleteTarget, setDeleteTarget] = useState(null); // { type: 'income'|'expense', idx: number }
+  const [toast, setToast] = useState({ message: '', type: 'success' });
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
   };
 
-  const removeExpense = (i) => {
-    const next = expenses.filter((_, idx) => idx !== i);
-    setExpenses(next);
-    triggerAutoSave(income, next);
+  const initiateDelete = (type, idx) => {
+    setDeleteTarget({ type, idx });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    const { type, idx } = deleteTarget;
+    setDeleteTarget(null);
+
+    const nextIncome = type === 'income' ? income.filter((_, i) => i !== idx) : income;
+    const nextExpenses = type === 'expense' ? expenses.filter((_, i) => i !== idx) : expenses;
+
+    if (!isFirebaseConfigured || !db) {
+      if (type === 'income') setIncome(nextIncome);
+      else setExpenses(nextExpenses);
+      showToast('Item deleted successfully.', 'success');
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, collectionId, recordId), {
+        person,
+        month: selectedMonth,
+        income: nextIncome,
+        expenses: nextExpenses,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+
+      if (type === 'income') setIncome(nextIncome);
+      else setExpenses(nextExpenses);
+      showToast('Item deleted successfully.', 'success');
+    } catch (err) {
+      console.error('Failed to delete item:', err);
+      showToast('Failed to delete item: ' + err.message, 'error');
+    }
   };
 
   /* ── Totals ── */
@@ -1080,7 +1114,7 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
                                   </button>
                                   <button
                                     className="ft-tx-action-btn ft-tx-action-btn--delete"
-                                    onClick={() => tx._type === 'income' ? removeIncome(tx._idx) : removeExpense(tx._idx)}
+                                    onClick={() => initiateDelete(tx._type, tx._idx)}
                                     title="Remove"
                                   >
                                     🗑️
@@ -1266,6 +1300,18 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
           </div>
         </div>
       </div>
+
+      <ConfirmDeleteModal
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <ToastNotification
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast({ message: '', type: 'success' })}
+      />
     </div>
   );
 }

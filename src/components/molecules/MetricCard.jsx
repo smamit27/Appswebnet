@@ -9,9 +9,13 @@ import React from 'react';
  * @param {string}  trend      - e.g. '+12%'
  * @param {'up'|'down'} trendDir
  */
-export default function MetricCard({ label, value, detail, icon, tone = 'sand', trend, trendDir }) {
+export default function MetricCard({ label, value, detail, icon, tone = 'sand', trend, trendDir, onClick }) {
   return (
-    <article className={`metric-card metric-card--${tone}`}>
+    <article 
+      className={`metric-card metric-card--${tone}`} 
+      onClick={onClick}
+      style={{ cursor: onClick ? 'pointer' : 'default' }}
+    >
       {icon && <div className="metric-card__icon">{icon}</div>}
       <p className="metric-card__label">{label}</p>
       <h3 className="metric-card__value">{value}</h3>

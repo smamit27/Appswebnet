@@ -10,6 +10,9 @@ export default defineConfig({
       devOptions: {
         enabled: true
       },
+      workbox: {
+        maximumFileSizeToCacheInBytes: 4000000
+      },
       manifest: {
         name: 'Family Dashboard',
         short_name: 'Family Dashboard',

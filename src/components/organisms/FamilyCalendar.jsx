@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import SectionCard from '../molecules/SectionCard.jsx';
+import ConfirmDeleteModal from '../molecules/ConfirmDeleteModal.jsx';
+import ToastNotification from '../molecules/ToastNotification.jsx';
 
 const TAGS = [
   { value: 'family', label: '🏠 Family', cls: 'cal-event--family' },
@@ -46,6 +48,22 @@ export default function FamilyCalendar({ items, isAuthorized, onAdd, onDelete })
   const [showForm, setShowForm]   = useState(false);
   const [form, setForm]           = useState(EMPTY_FORM);
   const [saving, setSaving]       = useState(false);
+  const [deleteEventId, setDeleteEventId] = useState(null);
+  const [toast, setToast] = useState({ message: '', type: 'success' });
+
+  const handleConfirmDelete = async () => {
+    if (!deleteEventId) return;
+    const id = deleteEventId;
+    setDeleteEventId(null);
+
+    try {
+      await onDelete(id);
+      setToast({ message: 'Event deleted successfully.', type: 'success' });
+    } catch (err) {
+      console.error('Failed to delete event:', err);
+      setToast({ message: 'Failed to delete event: ' + err.message, type: 'error' });
+    }
+  };
 
   const todayStr = today.toISOString().slice(0, 10);
 
@@ -203,7 +221,7 @@ export default function FamilyCalendar({ items, isAuthorized, onAdd, onDelete })
                       {ev.note && <div style={{ fontSize: '0.78rem', color: 'var(--muted)', marginTop: 4 }}>{ev.note}</div>}
                     </div>
                     {isAuthorized && !ev.isStatic && (
-                      <button className="btn btn--danger btn--sm btn--icon" onClick={() => onDelete(ev.id)} title="Delete">
+                       <button className="btn btn--danger btn--sm btn--icon" onClick={() => setDeleteEventId(ev.id)} title="Delete">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
                       </button>
                     )}
@@ -265,6 +283,19 @@ export default function FamilyCalendar({ items, isAuthorized, onAdd, onDelete })
         </div>,
         document.body
       )}
+
+      <ConfirmDeleteModal
+        isOpen={deleteEventId !== null}
+        onClose={() => setDeleteEventId(null)}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <ToastNotification
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast({ message: '', type: 'success' })}
+      />
+
     </div>
   );
 }

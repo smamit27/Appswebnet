@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import SectionCard from '../molecules/SectionCard.jsx';
 import StatusPill from '../atoms/StatusPill.jsx';
 import ProgressBar from '../atoms/ProgressBar.jsx';
+import ConfirmDeleteModal from '../molecules/ConfirmDeleteModal.jsx';
+import ToastNotification from '../molecules/ToastNotification.jsx';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar
 } from 'recharts';
@@ -52,6 +54,22 @@ export default function GymTracker({ name, items, isAuthorized, onAdd, onDelete 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm]         = useState(EMPTY_FORM);
   const [saving, setSaving]     = useState(false);
+  const [deleteWorkoutId, setDeleteWorkoutId] = useState(null);
+  const [toast, setToast] = useState({ message: '', type: 'success' });
+
+  const handleConfirmDelete = async () => {
+    if (!deleteWorkoutId) return;
+    const id = deleteWorkoutId;
+    setDeleteWorkoutId(null);
+
+    try {
+      await onDelete(id);
+      setToast({ message: 'Workout deleted successfully.', type: 'success' });
+    } catch (err) {
+      console.error('Failed to delete workout:', err);
+      setToast({ message: 'Failed to delete workout: ' + err.message, type: 'error' });
+    }
+  };
   const [filterType, setFilterType] = useState('All');
 
   const streak = useMemo(() => calcStreak(items), [items]);
@@ -281,7 +299,7 @@ export default function GymTracker({ name, items, isAuthorized, onAdd, onDelete 
                   <td><span className="sub">{w.notes || '—'}</span></td>
                   {isAuthorized && (
                     <td>
-                      <button className="btn btn--danger btn--sm btn--icon" onClick={() => onDelete(w.id)} title="Delete">
+                      <button className="btn btn--danger btn--sm btn--icon" onClick={() => setDeleteWorkoutId(w.id)} title="Delete">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
                       </button>
                     </td>
@@ -344,6 +362,19 @@ export default function GymTracker({ name, items, isAuthorized, onAdd, onDelete 
         </div>,
         document.body
       )}
+
+      <ConfirmDeleteModal
+        isOpen={deleteWorkoutId !== null}
+        onClose={() => setDeleteWorkoutId(null)}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <ToastNotification
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast({ message: '', type: 'success' })}
+      />
+
     </div>
   );
 }

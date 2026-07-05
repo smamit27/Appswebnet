@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import SectionCard from '../molecules/SectionCard.jsx';
 import ProgressBar from '../atoms/ProgressBar.jsx';
+import ConfirmDeleteModal from '../molecules/ConfirmDeleteModal.jsx';
+import ToastNotification from '../molecules/ToastNotification.jsx';
 
 const DEFAULT_HABITS = [
   { id: 'water', label: '💧 Drink 8 glasses of water', done: false },
@@ -45,9 +47,16 @@ export default function AmishiActivity({ items, isAuthorized, onSaveDay }) {
     setSaved(false);
   };
 
-  const removeHabit = (id) => {
+  const [deleteHabitId, setDeleteHabitId] = useState(null);
+  const [toast, setToast] = useState({ message: '', type: 'success' });
+
+  const handleConfirmDelete = () => {
+    if (!deleteHabitId) return;
+    const id = deleteHabitId;
+    setDeleteHabitId(null);
     setHabits(prev => prev.filter(h => h.id !== id));
     setSaved(false);
+    setToast({ message: 'Habit removed. Remember to save your day.', type: 'success' });
   };
 
   const handleSave = async () => {
@@ -127,7 +136,7 @@ export default function AmishiActivity({ items, isAuthorized, onSaveDay }) {
                     <button
                       className="btn btn--danger btn--sm btn--icon"
                       style={{ marginLeft: 'auto' }}
-                      onClick={e => { e.stopPropagation(); removeHabit(h.id); }}
+                      onClick={e => { e.stopPropagation(); setDeleteHabitId(h.id); }}
                       title="Remove habit"
                     >
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -249,6 +258,18 @@ export default function AmishiActivity({ items, isAuthorized, onSaveDay }) {
           </div>
         )}
       </SectionCard>
+
+      <ConfirmDeleteModal
+        isOpen={deleteHabitId !== null}
+        onClose={() => setDeleteHabitId(null)}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <ToastNotification
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast({ message: '', type: 'success' })}
+      />
     </div>
   );
 }
