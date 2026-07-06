@@ -475,7 +475,8 @@ function CustomAssetsEditor({ personName, personKey, assets, onSave, isAuthorize
     ppf: assets?.ppf || 0,
     epf: assets?.epf || 0,
     nps: assets?.nps || 0,
-    fd: assets?.fd || 0
+    fd: assets?.fd || 0,
+    usStock: assets?.usStock || 0
   });
 
   const handleSave = async () => {
@@ -488,11 +489,11 @@ function CustomAssetsEditor({ personName, personKey, assets, onSave, isAuthorize
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <p className="eyebrow" style={{ color: 'var(--primary)' }}>Retirement &amp; Fixed Income</p>
-          <h3 style={{ margin: 0 }}>Planned Assets (PPF, EPF, NPS, FD)</h3>
+          <h3 style={{ margin: 0 }}>Planned Assets (PPF, EPF, NPS, FD, US Stocks)</h3>
         </div>
         {isAuthorized && !editing && (
           <button className="btn btn--sm btn--primary" onClick={() => {
-            setFormData({ ppf: assets?.ppf || 0, epf: assets?.epf || 0, nps: assets?.nps || 0, fd: assets?.fd || 0 });
+            setFormData({ ppf: assets?.ppf || 0, epf: assets?.epf || 0, nps: assets?.nps || 0, fd: assets?.fd || 0, usStock: assets?.usStock || 0 });
             setEditing(true);
           }}>
             ✏️ Edit Balances
@@ -506,7 +507,8 @@ function CustomAssetsEditor({ personName, personKey, assets, onSave, isAuthorize
             { key: 'ppf', label: 'PPF (Public Provident Fund)' },
             { key: 'epf', label: 'EPF (Employee Provident Fund)' },
             { key: 'nps', label: 'NPS (National Pension System)' },
-            { key: 'fd', label: 'FD (Fixed Deposits)' }
+            { key: 'fd', label: 'FD (Fixed Deposits)' },
+            { key: 'usStock', label: 'US Stocks' }
           ].map(f => (
             <div key={f.key}>
               <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>{f.label}</label>
@@ -538,7 +540,8 @@ function CustomAssetsEditor({ personName, personKey, assets, onSave, isAuthorize
             { key: 'ppf', label: 'PPF Balance', val: assets?.ppf || 0, color: '#e67e22', icon: '🏦' },
             { key: 'epf', label: 'EPF Balance', val: assets?.epf || 0, color: '#d35400', icon: '💼' },
             { key: 'nps', label: 'NPS Balance', val: assets?.nps || 0, color: '#1abc9c', icon: '🪙' },
-            { key: 'fd', label: 'Fixed Deposits', val: assets?.fd || 0, color: '#2ecc71', icon: '💵' }
+            { key: 'fd', label: 'Fixed Deposits', val: assets?.fd || 0, color: '#2ecc71', icon: '💵' },
+            { key: 'usStock', label: 'US Stocks', val: assets?.usStock || 0, color: '#3498db', icon: '🇺🇸' }
           ].map(f => (
             <div key={f.key} style={{ padding: '14px 18px', background: 'rgba(61,63,52,0.03)', borderRadius: 12, border: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 14 }}>
               <div style={{ fontSize: '1.6rem', color: f.color }}>{f.icon}</div>
@@ -641,8 +644,8 @@ function PersonTab({ person, gradient, personKey, assets, onSave, isAuthorized }
 export default function PortfolioDashboard({ isAuthorized }) {
   const [tab, setTab] = useState('overview');
   const [customAssets, setCustomAssets] = useState({
-    amit: { ppf: 0, epf: 0, nps: 0, fd: 0 },
-    sweta: { ppf: 0, epf: 0, nps: 0, fd: 0 }
+    amit: { ppf: 0, epf: 0, nps: 0, fd: 0, usStock: 0 },
+    sweta: { ppf: 0, epf: 0, nps: 0, fd: 0, usStock: 0 }
   });
 
   // Load from Firestore
@@ -654,8 +657,8 @@ export default function PortfolioDashboard({ isAuthorized }) {
         if (snap.exists()) {
           const data = snap.data();
           setCustomAssets({
-            amit: { ppf: 0, epf: 0, nps: 0, fd: 0, ...data.amit },
-            sweta: { ppf: 0, epf: 0, nps: 0, fd: 0, ...data.sweta }
+            amit: { ppf: 0, epf: 0, nps: 0, fd: 0, usStock: 0, ...data.amit },
+            sweta: { ppf: 0, epf: 0, nps: 0, fd: 0, usStock: 0, ...data.sweta }
           });
         }
       } catch (err) {
@@ -664,6 +667,41 @@ export default function PortfolioDashboard({ isAuthorized }) {
     };
     fetchCustomAssets();
   }, []);
+
+  // Temporary backfill of values
+  useEffect(() => {
+    if (isAuthorized) {
+      const forceUpdateCustomAssets = async () => {
+        try {
+          const docRef = doc(db, 'portfolio', 'custom_assets');
+          const snap = await getDoc(docRef);
+          const initialData = {
+            amit: { ppf: 307250, epf: 2261295, nps: 302538, fd: 0, usStock: 27000 },
+            sweta: { ppf: 200000, epf: 375000, nps: 0, fd: 1000000, usStock: 0 }
+          };
+          
+          let needsUpdate = false;
+          if (!snap.exists()) {
+            needsUpdate = true;
+          } else {
+            const d = snap.data();
+            if (!d.amit || d.amit.ppf !== 307250 || d.amit.usStock !== 27000) {
+              needsUpdate = true;
+            }
+          }
+
+          if (needsUpdate) {
+            await setDoc(docRef, initialData);
+            setCustomAssets(initialData);
+            console.log("Successfully force-initialized portfolio custom assets!");
+          }
+        } catch (err) {
+          console.error("Error backfilling custom assets:", err);
+        }
+      };
+      forceUpdateCustomAssets();
+    }
+  }, [isAuthorized]);
 
   // Save to Firestore
   const handleSaveCustomAssets = async (personKey, fields) => {
@@ -690,13 +728,15 @@ export default function PortfolioDashboard({ isAuthorized }) {
   const amitEPF = Number(customAssets.amit.epf || 0);
   const amitNPS = Number(customAssets.amit.nps || 0);
   const amitFD  = Number(customAssets.amit.fd || 0);
-  const amitTotal = AMIT.total + amitPPF + amitEPF + amitNPS + amitFD;
+  const amitUSStock = Number(customAssets.amit.usStock || 0);
+  const amitTotal = AMIT.total + amitPPF + amitEPF + amitNPS + amitFD + amitUSStock;
 
   const swetaPPF = Number(customAssets.sweta.ppf || 0);
   const swetaEPF = Number(customAssets.sweta.epf || 0);
   const swetaNPS = Number(customAssets.sweta.nps || 0);
   const swetaFD  = Number(customAssets.sweta.fd || 0);
-  const swetaTotal = SWETA.total + swetaPPF + swetaEPF + swetaNPS + swetaFD;
+  const swetaUSStock = Number(customAssets.sweta.usStock || 0);
+  const swetaTotal = SWETA.total + swetaPPF + swetaEPF + swetaNPS + swetaFD + swetaUSStock;
 
   const combinedTotal = amitTotal + swetaTotal;
 
@@ -709,6 +749,7 @@ export default function PortfolioDashboard({ isAuthorized }) {
     { assetClass: 'EPF (EPF)',              value: amitEPF,                  pct: 0, color: '#d35400' },
     { assetClass: 'NPS (NPS)',              value: amitNPS,                  pct: 0, color: '#1abc9c' },
     { assetClass: 'Fixed Deposits (FD)',   value: amitFD,                   pct: 0, color: '#2ecc71' },
+    { assetClass: 'US Stocks (US)',        value: amitUSStock,              pct: 0, color: '#3498db' },
   ].filter(c => c.value > 0 || c.assetClass.includes('Equities') || c.assetClass.includes('Mutual Fund'));
   
   amitComposition.forEach(c => {
@@ -722,6 +763,7 @@ export default function PortfolioDashboard({ isAuthorized }) {
     { assetClass: 'EPF (EPF)',              value: swetaEPF,                  pct: 0, color: '#d35400' },
     { assetClass: 'NPS (NPS)',              value: swetaNPS,                  pct: 0, color: '#1abc9c' },
     { assetClass: 'Fixed Deposits (FD)',   value: swetaFD,                   pct: 0, color: '#2ecc71' },
+    { assetClass: 'US Stocks (US)',        value: swetaUSStock,              pct: 0, color: '#3498db' },
   ].filter(c => c.value > 0 || c.assetClass.includes('Equities') || c.assetClass.includes('Mutual Fund'));
   
   swetaComposition.forEach(c => {
@@ -736,6 +778,7 @@ export default function PortfolioDashboard({ isAuthorized }) {
     { assetClass: 'EPF (EPF)',              value: amitEPF + swetaEPF, pct: 0, color: '#d35400' },
     { assetClass: 'NPS (NPS)',              value: amitNPS + swetaNPS, pct: 0, color: '#1abc9c' },
     { assetClass: 'Fixed Deposits (FD)',   value: amitFD + swetaFD,   pct: 0, color: '#2ecc71' },
+    { assetClass: 'US Stocks (US)',        value: amitUSStock + swetaUSStock, pct: 0, color: '#3498db' },
   ].filter(c => c.value > 0 || c.assetClass.includes('Equities') || c.assetClass.includes('Mutual Fund'));
   
   combinedComposition.forEach(c => {
