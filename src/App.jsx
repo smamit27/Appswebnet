@@ -19,7 +19,7 @@ import DietPlan          from './components/organisms/DietPlan.jsx';
 import FamilyCalendar    from './components/organisms/FamilyCalendar.jsx';
 import CleaningSchedule  from './components/organisms/CleaningSchedule.jsx';
 import { db } from './firebase.js';
-import { doc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import AIChatButton from './components/organisms/AIChatButton.jsx';
 import AIChatWindow from './components/organisms/AIChatWindow.jsx';
 
@@ -136,7 +136,7 @@ const NAV = [
 ];
 
 export default function App() {
-  const { user, isAuthorized, signInWithGoogle, logout } = useAuth();
+  const { user, isAuthorized, accessDenied, signInWithGoogle, logout } = useAuth();
   const [activeTab, setActiveTab]           = useState('overview');
   const [isSidebarOpen, setIsSidebarOpen]   = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -154,21 +154,7 @@ export default function App() {
 
   // For the Overview we need a quick summary of finance — fetch latest month snapshot
   const [financeSnap, setFinanceSnap] = useState({ swetaIncome: 0, swetaExpense: 0, amitIncome: 0, amitExpense: 0 });
-  const [portfolioSummary, setPortfolioSummary] = useState(null);
-
-  useEffect(() => {
-    if (!db || !user) return;
-    const unsub = onSnapshot(doc(db, 'portfolioSummary', 'family_summary'), (snap) => {
-      if (snap.exists()) {
-        setPortfolioSummary(snap.data());
-      } else {
-        setPortfolioSummary(null);
-      }
-    }, (error) => {
-      console.warn("App portfolioSummary listener error:", error);
-    });
-    return () => unsub();
-  }, [user]);
+  // portfolioSummary removed — portfolio now uses static NSDL CAS data
 
   const handleTabChange = useCallback((tabId) => {
     if (tabId === activeTab) return;
@@ -312,7 +298,7 @@ export default function App() {
                 gymItems={[...amitGym.items, ...swetaGym.items]}
                 activityItems={activity.items}
                 calendarItems={calendar.items}
-                portfolioSummary={portfolioSummary}
+                portfolioSummary={null}
                 onNavigate={handleTabChange}
               />
             )}
@@ -377,6 +363,7 @@ export default function App() {
         onClose={() => setIsAuthModalOpen(false)}
         user={user}
         isAuthorized={isAuthorized}
+        accessDenied={accessDenied}
         onSignIn={signInWithGoogle}
         onSignOut={logout}
       />

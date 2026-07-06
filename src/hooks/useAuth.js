@@ -2,53 +2,76 @@ import { useState, useEffect } from 'react';
 import {
   onAuthStateChanged,
   signInWithPopup,
-  signInAnonymously,
   signOut,
 } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase.js';
 
+// 🔒 STRICT ACCESS — Only these two accounts are permitted
 const ALLOWED_EMAILS = [
-  'sweta@gmail.com',
-  'swetank.suman@gmail.com',
   'smamit27@gmail.com',
-  'amishi@gmail.com',
-  'amit@gmail.com',
+  'gsweta228@gmail.com',
 ];
 
 export function useAuth() {
-  const [user, setUser]       = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser]             = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
     if (!auth) { setLoading(false); return; }
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setLoading(false);
-      if (!u) {
-        signInAnonymously(auth).catch(console.error);
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (u && !u.isAnonymous) {
+        const email = (u.email || '').toLowerCase();
+        if (!ALLOWED_EMAILS.includes(email)) {
+          // Immediately sign out any unauthorized account
+          await signOut(auth);
+          setUser(null);
+          setAccessDenied(true);
+        } else {
+          setUser(u);
+          setAccessDenied(false);
+        }
+      } else {
+        setUser(null);
       }
+      setLoading(false);
     });
     return () => unsub();
   }, []);
 
   const signInWithGoogle = async () => {
     if (!auth) return;
+    setAccessDenied(false);
     try {
       const result = await signInWithPopup(auth, googleProvider);
+      const email = (result.user.email || '').toLowerCase();
+      if (!ALLOWED_EMAILS.includes(email)) {
+        // Immediately sign out — wrong account
+        await signOut(auth);
+        setUser(null);
+        setAccessDenied(true);
+        throw new Error('ACCESS_DENIED');
+      }
       return result.user;
     } catch (err) {
-      console.error('Google sign-in failed:', err);
+      if (err.message !== 'ACCESS_DENIED') {
+        console.error('Google sign-in failed:', err);
+      }
       throw err;
     }
   };
 
   const logout = async () => {
     if (!auth) return;
+    setAccessDenied(false);
     await signOut(auth);
   };
 
-  const isAuthorized = user && user.email &&
+  // isAuthorized — true only for the two permitted accounts
+  const isAuthorized = user &&
+    user.email &&
     ALLOWED_EMAILS.includes(user.email.toLowerCase());
 
-  return { user, loading, isAuthorized, signInWithGoogle, logout };
+  return { user, loading, isAuthorized, accessDenied, signInWithGoogle, logout };
 }
+
