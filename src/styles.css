@@ -349,7 +349,7 @@ p:last-child { margin-bottom: 0; }
   font-size: 1.1rem;
 }
 .metric-card__label { font-size: 0.78rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
-.metric-card__value { font-size: clamp(1.4rem, 2.5vw, 1.9rem); font-family: var(--heading-font); font-weight: 700; line-height: 1.1; }
+.metric-card__value { font-size: clamp(1.15rem, 1.8vw, 1.45rem); font-family: var(--heading-font); font-weight: 700; line-height: 1.1; }
 .metric-card__detail { font-size: 0.8rem; color: var(--muted); margin-top: 6px; }
 .metric-card__trend { display: flex; align-items: center; gap: 4px; font-size: 0.78rem; font-weight: 600; margin-top: 8px; }
 .metric-card__trend--up   { color: var(--pine); }
