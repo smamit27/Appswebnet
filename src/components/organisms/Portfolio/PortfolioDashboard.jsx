@@ -668,40 +668,7 @@ export default function PortfolioDashboard({ isAuthorized }) {
     fetchCustomAssets();
   }, []);
 
-  // Temporary backfill of values
-  useEffect(() => {
-    if (isAuthorized) {
-      const forceUpdateCustomAssets = async () => {
-        try {
-          const docRef = doc(db, 'portfolio', 'custom_assets');
-          const snap = await getDoc(docRef);
-          const initialData = {
-            amit: { ppf: 307250, epf: 2261295, nps: 302538, fd: 0, usStock: 27000 },
-            sweta: { ppf: 200000, epf: 375000, nps: 0, fd: 1000000, usStock: 0 }
-          };
-          
-          let needsUpdate = false;
-          if (!snap.exists()) {
-            needsUpdate = true;
-          } else {
-            const d = snap.data();
-            if (!d.amit || d.amit.ppf !== 307250 || d.amit.usStock !== 27000) {
-              needsUpdate = true;
-            }
-          }
 
-          if (needsUpdate) {
-            await setDoc(docRef, initialData);
-            setCustomAssets(initialData);
-            console.log("Successfully force-initialized portfolio custom assets!");
-          }
-        } catch (err) {
-          console.error("Error backfilling custom assets:", err);
-        }
-      };
-      forceUpdateCustomAssets();
-    }
-  }, [isAuthorized]);
 
   // Save to Firestore
   const handleSaveCustomAssets = async (personKey, fields) => {
