@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
   PieChart, Pie, LineChart, Line, Legend
 } from 'recharts';
+import { db } from '../../../firebase.js';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 /* ─── Formatters ────────────────────────────────────────────── */
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
@@ -205,23 +207,23 @@ function CompositionDonut({ pieData, total }) {
 /* ─── Monthly Table ──────────────────────────────────────────── */
 function MonthlyTable({ data, accentColor }) {
   return (
-    <div className="table-card">
+    <div className="table-card" style={{ fontSize: '0.8rem' }}>
       <table style={{ width: '100%' }}>
         <thead>
-          <tr>
+          <tr style={{ fontSize: '0.8rem' }}>
             <th style={{ textAlign: 'left' }}>Month</th>
-            <th style={{ textAlign: 'right' }}>Portfolio Value (₹)</th>
-            <th style={{ textAlign: 'right' }}>Change (₹)</th>
-            <th style={{ textAlign: 'right' }}>Change (%)</th>
+            <th style={{ textAlign: 'right' }}>Value</th>
+            <th style={{ textAlign: 'right' }}>MoM Change</th>
+            <th style={{ textAlign: 'right' }}>% Change</th>
           </tr>
         </thead>
         <tbody>
           {data.map((row, i) => (
-            <tr key={row.month} style={{ background: i === data.length - 1 ? `${accentColor}08` : undefined }}>
+            <tr key={row.month} style={{ background: i === data.length - 1 ? `${accentColor}08` : undefined, fontSize: '0.8rem' }}>
               <td style={{ fontWeight: i === data.length - 1 ? 700 : 500 }}>
                 {row.month}
                 {i === data.length - 1 && (
-                  <span style={{ marginLeft: 8, fontSize: '0.68rem', background: accentColor, color: '#fff', borderRadius: 4, padding: '1px 6px', fontWeight: 600 }}>LATEST</span>
+                  <span style={{ marginLeft: 6, fontSize: '0.62rem', background: accentColor, color: '#fff', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>LATEST</span>
                 )}
               </td>
               <td style={{ textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>{fmt(row.value)}</td>
@@ -235,9 +237,9 @@ function MonthlyTable({ data, accentColor }) {
           ))}
         </tbody>
         <tfoot>
-          <tr style={{ borderTop: '2px solid var(--line)', background: `${accentColor}08` }}>
-            <td colSpan={3} style={{ fontWeight: 700, color: accentColor, paddingTop: 10 }}>Current Total Portfolio Value</td>
-            <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '0.97rem', color: accentColor }}>
+          <tr style={{ borderTop: '2px solid var(--line)', background: `${accentColor}08`, fontSize: '0.8rem' }}>
+            <td colSpan={3} style={{ fontWeight: 700, color: accentColor, paddingTop: 10 }}>Current Total Value</td>
+            <td style={{ textAlign: 'right', fontWeight: 800, fontSize: '0.9rem', color: accentColor }}>
               {fmt(data[data.length - 1]?.value)}
             </td>
           </tr>
@@ -250,29 +252,29 @@ function MonthlyTable({ data, accentColor }) {
 /* ─── Composition Table ──────────────────────────────────────── */
 function CompositionTable({ rows, total, accentColor }) {
   return (
-    <div className="table-card">
+    <div className="table-card" style={{ fontSize: '0.8rem' }}>
       <table style={{ width: '100%' }}>
         <thead>
-          <tr>
+          <tr style={{ fontSize: '0.8rem' }}>
             <th style={{ textAlign: 'left' }}>Asset Class</th>
-            <th style={{ textAlign: 'right' }}>Value in ₹</th>
+            <th style={{ textAlign: 'right' }}>Value</th>
             <th style={{ textAlign: 'right' }}>%</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(row => (
-            <tr key={row.assetClass} style={{ opacity: row.value === 0 ? 0.4 : 1 }}>
-              <td style={{ fontWeight: row.value > 0 ? 600 : 400, fontSize: '0.84rem' }}>
+            <tr key={row.assetClass} style={{ opacity: row.value === 0 ? 0.4 : 1, fontSize: '0.8rem' }}>
+              <td style={{ fontWeight: row.value > 0 ? 600 : 400 }}>
                 {row.assetClass}
                 {row.value > 0 && <span style={{ marginLeft: 6, width: 8, height: 8, borderRadius: '50%', background: row.color || accentColor, display: 'inline-block', verticalAlign: 'middle' }} />}
               </td>
-              <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: '0.84rem' }}>{row.value > 0 ? fmt(row.value) : '0.00'}</td>
-              <td style={{ textAlign: 'right', fontSize: '0.84rem', color: row.value > 0 ? 'inherit' : '#94a3b8' }}>{row.pct.toFixed(2)}%</td>
+              <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{row.value > 0 ? fmt(row.value) : '0.00'}</td>
+              <td style={{ textAlign: 'right', color: row.value > 0 ? 'inherit' : '#94a3b8' }}>{row.pct.toFixed(2)}%</td>
             </tr>
           ))}
         </tbody>
         <tfoot>
-          <tr style={{ borderTop: '2px solid var(--line)', fontWeight: 800 }}>
+          <tr style={{ borderTop: '2px solid var(--line)', fontWeight: 800, fontSize: '0.8rem' }}>
             <td>TOTAL</td>
             <td style={{ textAlign: 'right', fontFamily: 'monospace', color: accentColor }}>{fmt(total)}</td>
             <td style={{ textAlign: 'right', color: accentColor }}>100%</td>
@@ -346,23 +348,14 @@ function HeaderBanner({ name, total, asOn, momChange, momPct, dpName, dpId, clie
 /* ════════════════════════════════════════════════════════════════
    OVERVIEW TAB
    ════════════════════════════════════════════════════════════════ */
-function OverviewTab() {
-  const amitLatest = AMIT.monthly[AMIT.monthly.length - 1];
-  const swetaLatest = SWETA.monthly[SWETA.monthly.length - 1];
-
-  const combinedPie = [
-    { assetClass: 'Equities (E)',          value: COMBINED_EQUITIES,  color: '#9b2226', pct: (COMBINED_EQUITIES / COMBINED_TOTAL) * 100 },
-    { assetClass: 'Mutual Fund Folios (F)',value: COMBINED_MF_FOLIOS, color: '#264F8B', pct: (COMBINED_MF_FOLIOS / COMBINED_TOTAL) * 100 },
-    { assetClass: 'Mutual Funds (M)',      value: COMBINED_MF,        color: '#3a7d44', pct: (COMBINED_MF / COMBINED_TOTAL) * 100 },
-  ];
-
+function OverviewTab({ amitTotal, swetaTotal, combinedTotal, combinedPie }) {
   return (
     <div style={{ display: 'grid', gap: 22 }}>
 
       {/* Combined header */}
       <HeaderBanner
         name="Amit + Sweta (Family)"
-        total={COMBINED_TOTAL}
+        total={combinedTotal}
         asOn="Apr–May 2026"
         gradient="linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)"
       />
@@ -371,27 +364,27 @@ function OverviewTab() {
       <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
         <div className="metric-card" style={{ background: 'linear-gradient(135deg, #9b2226 0%, #b5451b 100%)', color: '#fff', border: 'none' }}>
           <p className="metric-card__label" style={{ color: 'rgba(255,255,255,0.75)' }}>Amit's Portfolio</p>
-          <h3 className="metric-card__value" style={{ color: '#fff' }}>{fmt(AMIT.total)}</h3>
+          <h3 className="metric-card__value" style={{ color: '#fff' }}>{fmt(amitTotal)}</h3>
           <p className="metric-card__detail" style={{ color: 'rgba(255,255,255,0.65)' }}>as on {AMIT.asOn}</p>
         </div>
         <div className="metric-card" style={{ background: 'linear-gradient(135deg, #264F8B 0%, #1d3a6e 100%)', color: '#fff', border: 'none' }}>
           <p className="metric-card__label" style={{ color: 'rgba(255,255,255,0.75)' }}>Sweta's Portfolio</p>
-          <h3 className="metric-card__value" style={{ color: '#fff' }}>{fmt(SWETA.total)}</h3>
+          <h3 className="metric-card__value" style={{ color: '#fff' }}>{fmt(swetaTotal)}</h3>
           <p className="metric-card__detail" style={{ color: 'rgba(255,255,255,0.65)' }}>as on {SWETA.asOn}</p>
         </div>
         <div className="metric-card" style={{ background: 'linear-gradient(135deg, #0f3460 0%, #533483 100%)', color: '#fff', border: 'none' }}>
           <p className="metric-card__label" style={{ color: 'rgba(255,255,255,0.75)' }}>Combined Family Total</p>
-          <h3 className="metric-card__value" style={{ color: '#fff' }}>{fmt(COMBINED_TOTAL)}</h3>
+          <h3 className="metric-card__value" style={{ color: '#fff' }}>{fmt(combinedTotal)}</h3>
           <p className="metric-card__detail" style={{ color: 'rgba(255,255,255,0.65)' }}>Amit + Sweta</p>
         </div>
         <div className="metric-card metric-card--teal">
           <p className="metric-card__label">Amit's Share</p>
-          <h3 className="metric-card__value">{((AMIT.total / COMBINED_TOTAL) * 100).toFixed(1)}%</h3>
+          <h3 className="metric-card__value">{combinedTotal > 0 ? ((amitTotal / combinedTotal) * 100).toFixed(1) : 0}%</h3>
           <p className="metric-card__detail">of family portfolio</p>
         </div>
         <div className="metric-card metric-card--pine">
           <p className="metric-card__label">Sweta's Share</p>
-          <h3 className="metric-card__value">{((SWETA.total / COMBINED_TOTAL) * 100).toFixed(1)}%</h3>
+          <h3 className="metric-card__value">{combinedTotal > 0 ? ((swetaTotal / combinedTotal) * 100).toFixed(1) : 0}%</h3>
           <p className="metric-card__detail">of family portfolio</p>
         </div>
       </div>
@@ -426,12 +419,12 @@ function OverviewTab() {
           <p className="eyebrow">Asset Mix</p>
           <h3 style={{ marginBottom: 4 }}>Combined Portfolio Composition</h3>
           <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: 16 }}>Amit + Sweta combined holdings</p>
-          <CompositionDonut pieData={combinedPie} total={COMBINED_TOTAL} />
+          <CompositionDonut pieData={combinedPie} total={combinedTotal} />
         </div>
         <div className="section-card" style={{ padding: 24 }}>
           <p className="eyebrow">Family Asset Breakdown</p>
           <h3 style={{ marginBottom: 16 }}>Combined Asset Class Table</h3>
-          <CompositionTable rows={combinedPie} total={COMBINED_TOTAL} accentColor="#7c3aed" />
+          <CompositionTable rows={combinedPie} total={combinedTotal} accentColor="#7c3aed" />
         </div>
       </div>
 
@@ -441,7 +434,7 @@ function OverviewTab() {
           <p className="eyebrow" style={{ color: '#9b2226' }}>Amit Singh</p>
           <h4 style={{ marginBottom: 10, fontSize: '0.9rem' }}>Latest Statement Summary</h4>
           {[
-            { label: 'Total Value', value: fmt(AMIT.total), bold: true },
+            { label: 'Total Value', value: fmt(amitTotal), bold: true },
             { label: 'Equities', value: fmt(AMIT.composition[0].value) },
             { label: 'Mutual Funds', value: fmt(AMIT.composition[1].value) },
             { label: 'MF Folios', value: fmt(AMIT.composition[2].value) },
@@ -457,7 +450,7 @@ function OverviewTab() {
           <p className="eyebrow" style={{ color: '#264F8B' }}>Sweta Gupta</p>
           <h4 style={{ marginBottom: 10, fontSize: '0.9rem' }}>Latest Statement Summary</h4>
           {[
-            { label: 'Total Value', value: fmt(SWETA.total), bold: true },
+            { label: 'Total Value', value: fmt(swetaTotal), bold: true },
             { label: 'Equities', value: fmt(SWETA.composition[0].value) },
             { label: 'Mutual Funds', value: '₹0.00' },
             { label: 'MF Folios', value: fmt(SWETA.composition[1].value) },
@@ -475,10 +468,96 @@ function OverviewTab() {
   );
 }
 
+/* ─── Custom Assets Editor ─────────────────────────────────────── */
+function CustomAssetsEditor({ personName, personKey, assets, onSave, isAuthorized }) {
+  const [editing, setEditing] = useState(false);
+  const [formData, setFormData] = useState({
+    ppf: assets?.ppf || 0,
+    epf: assets?.epf || 0,
+    nps: assets?.nps || 0,
+    fd: assets?.fd || 0
+  });
+
+  const handleSave = async () => {
+    await onSave(personKey, formData);
+    setEditing(false);
+  };
+
+  return (
+    <div className="section-card" style={{ padding: 24, borderTop: '3px solid var(--primary)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div>
+          <p className="eyebrow" style={{ color: 'var(--primary)' }}>Retirement &amp; Fixed Income</p>
+          <h3 style={{ margin: 0 }}>Planned Assets (PPF, EPF, NPS, FD)</h3>
+        </div>
+        {isAuthorized && !editing && (
+          <button className="btn btn--sm btn--primary" onClick={() => {
+            setFormData({ ppf: assets?.ppf || 0, epf: assets?.epf || 0, nps: assets?.nps || 0, fd: assets?.fd || 0 });
+            setEditing(true);
+          }}>
+            ✏️ Edit Balances
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+          {[
+            { key: 'ppf', label: 'PPF (Public Provident Fund)' },
+            { key: 'epf', label: 'EPF (Employee Provident Fund)' },
+            { key: 'nps', label: 'NPS (National Pension System)' },
+            { key: 'fd', label: 'FD (Fixed Deposits)' }
+          ].map(f => (
+            <div key={f.key}>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#64748b', marginBottom: 4 }}>{f.label}</label>
+              <input
+                type="number"
+                value={formData[f.key] === 0 ? '' : formData[f.key]}
+                onChange={e => setFormData({ ...formData, [f.key]: parseFloat(e.target.value) || 0 })}
+                placeholder="0"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: '1px solid var(--line)',
+                  background: 'var(--bg)',
+                  color: 'var(--text)',
+                  fontSize: '0.9rem'
+                }}
+              />
+            </div>
+          ))}
+          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 12 }}>
+            <button className="btn btn--sm btn--secondary" onClick={() => setEditing(false)}>Cancel</button>
+            <button className="btn btn--sm btn--primary" onClick={handleSave}>Save Balances</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
+          {[
+            { key: 'ppf', label: 'PPF Balance', val: assets?.ppf || 0, color: '#e67e22', icon: '🏦' },
+            { key: 'epf', label: 'EPF Balance', val: assets?.epf || 0, color: '#d35400', icon: '💼' },
+            { key: 'nps', label: 'NPS Balance', val: assets?.nps || 0, color: '#1abc9c', icon: '🪙' },
+            { key: 'fd', label: 'Fixed Deposits', val: assets?.fd || 0, color: '#2ecc71', icon: '💵' }
+          ].map(f => (
+            <div key={f.key} style={{ padding: '14px 18px', background: 'rgba(61,63,52,0.03)', borderRadius: 12, border: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ fontSize: '1.6rem', color: f.color }}>{f.icon}</div>
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>{f.label}</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--ink)' }}>{fmt(f.val)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ════════════════════════════════════════════════════════════════
    PERSON TAB (shared for Amit and Sweta)
    ════════════════════════════════════════════════════════════════ */
-function PersonTab({ person, gradient }) {
+function PersonTab({ person, gradient, personKey, assets, onSave, isAuthorized }) {
   const latest = person.monthly[person.monthly.length - 1];
   const accentColor = person.color;
   const activePie = person.composition.filter(c => c.value > 0);
@@ -498,6 +577,15 @@ function PersonTab({ person, gradient }) {
         dpId={person.dpId}
         clientId={person.clientId}
         gradient={gradient}
+      />
+
+      {/* Custom Assets planning */}
+      <CustomAssetsEditor
+        personName={person.name}
+        personKey={personKey}
+        assets={assets}
+        onSave={onSave}
+        isAuthorized={isAuthorized}
       />
 
       {/* Bar Chart */}
@@ -550,13 +638,132 @@ function PersonTab({ person, gradient }) {
 /* ════════════════════════════════════════════════════════════════
    MAIN COMPONENT
    ════════════════════════════════════════════════════════════════ */
-export default function PortfolioDashboard() {
+export default function PortfolioDashboard({ isAuthorized }) {
   const [tab, setTab] = useState('overview');
+  const [customAssets, setCustomAssets] = useState({
+    amit: { ppf: 0, epf: 0, nps: 0, fd: 0 },
+    sweta: { ppf: 0, epf: 0, nps: 0, fd: 0 }
+  });
+
+  // Load from Firestore
+  useEffect(() => {
+    const fetchCustomAssets = async () => {
+      try {
+        const docRef = doc(db, 'portfolio', 'custom_assets');
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          setCustomAssets({
+            amit: { ppf: 0, epf: 0, nps: 0, fd: 0, ...data.amit },
+            sweta: { ppf: 0, epf: 0, nps: 0, fd: 0, ...data.sweta }
+          });
+        }
+      } catch (err) {
+        console.error("Error fetching custom portfolio assets:", err);
+      }
+    };
+    fetchCustomAssets();
+  }, []);
+
+  // Save to Firestore
+  const handleSaveCustomAssets = async (personKey, fields) => {
+    try {
+      const nextAssets = {
+        ...customAssets,
+        [personKey]: {
+          ...customAssets[personKey],
+          ...fields
+        }
+      };
+      setCustomAssets(nextAssets);
+      const docRef = doc(db, 'portfolio', 'custom_assets');
+      await setDoc(docRef, nextAssets);
+      console.log("Custom portfolio assets saved successfully!");
+    } catch (err) {
+      console.error("Error saving custom portfolio assets:", err);
+      alert("Failed to save custom assets. Please check permissions / login state.");
+    }
+  };
+
+  // Calculations
+  const amitPPF = Number(customAssets.amit.ppf || 0);
+  const amitEPF = Number(customAssets.amit.epf || 0);
+  const amitNPS = Number(customAssets.amit.nps || 0);
+  const amitFD  = Number(customAssets.amit.fd || 0);
+  const amitTotal = AMIT.total + amitPPF + amitEPF + amitNPS + amitFD;
+
+  const swetaPPF = Number(customAssets.sweta.ppf || 0);
+  const swetaEPF = Number(customAssets.sweta.epf || 0);
+  const swetaNPS = Number(customAssets.sweta.nps || 0);
+  const swetaFD  = Number(customAssets.sweta.fd || 0);
+  const swetaTotal = SWETA.total + swetaPPF + swetaEPF + swetaNPS + swetaFD;
+
+  const combinedTotal = amitTotal + swetaTotal;
+
+  // Dynamic Composition lists
+  const amitComposition = [
+    { assetClass: 'Equities (E)',          value: AMIT.composition[0].value, pct: 0, color: '#9b2226' },
+    { assetClass: 'Mutual Funds (M)',       value: AMIT.composition[1].value, pct: 0, color: '#3a7d44' },
+    { assetClass: 'Mutual Fund Folios (F)', value: AMIT.composition[2].value, pct: 0, color: '#264F8B' },
+    { assetClass: 'PPF (PPF)',              value: amitPPF,                  pct: 0, color: '#e67e22' },
+    { assetClass: 'EPF (EPF)',              value: amitEPF,                  pct: 0, color: '#d35400' },
+    { assetClass: 'NPS (NPS)',              value: amitNPS,                  pct: 0, color: '#1abc9c' },
+    { assetClass: 'Fixed Deposits (FD)',   value: amitFD,                   pct: 0, color: '#2ecc71' },
+  ].filter(c => c.value > 0 || c.assetClass.includes('Equities') || c.assetClass.includes('Mutual Fund'));
+  
+  amitComposition.forEach(c => {
+    c.pct = amitTotal > 0 ? (c.value / amitTotal) * 100 : 0;
+  });
+
+  const swetaComposition = [
+    { assetClass: 'Equities (E)',          value: SWETA.composition[0].value, pct: 0, color: '#9b2226' },
+    { assetClass: 'Mutual Fund Folios (F)', value: SWETA.composition[1].value, pct: 0, color: '#264F8B' },
+    { assetClass: 'PPF (PPF)',              value: swetaPPF,                  pct: 0, color: '#e67e22' },
+    { assetClass: 'EPF (EPF)',              value: swetaEPF,                  pct: 0, color: '#d35400' },
+    { assetClass: 'NPS (NPS)',              value: swetaNPS,                  pct: 0, color: '#1abc9c' },
+    { assetClass: 'Fixed Deposits (FD)',   value: swetaFD,                   pct: 0, color: '#2ecc71' },
+  ].filter(c => c.value > 0 || c.assetClass.includes('Equities') || c.assetClass.includes('Mutual Fund'));
+  
+  swetaComposition.forEach(c => {
+    c.pct = swetaTotal > 0 ? (c.value / swetaTotal) * 100 : 0;
+  });
+
+  const combinedComposition = [
+    { assetClass: 'Equities (E)',          value: COMBINED_EQUITIES,  pct: 0, color: '#9b2226' },
+    { assetClass: 'Mutual Fund Folios (F)', value: COMBINED_MF_FOLIOS, color: '#264F8B', pct: 0 },
+    { assetClass: 'Mutual Funds (M)',       value: COMBINED_MF,        color: '#3a7d44', pct: 0 },
+    { assetClass: 'PPF (PPF)',              value: amitPPF + swetaPPF, pct: 0, color: '#e67e22' },
+    { assetClass: 'EPF (EPF)',              value: amitEPF + swetaEPF, pct: 0, color: '#d35400' },
+    { assetClass: 'NPS (NPS)',              value: amitNPS + swetaNPS, pct: 0, color: '#1abc9c' },
+    { assetClass: 'Fixed Deposits (FD)',   value: amitFD + swetaFD,   pct: 0, color: '#2ecc71' },
+  ].filter(c => c.value > 0 || c.assetClass.includes('Equities') || c.assetClass.includes('Mutual Fund'));
+  
+  combinedComposition.forEach(c => {
+    c.pct = combinedTotal > 0 ? (c.value / combinedTotal) * 100 : 0;
+  });
+
+  const amitDynamic = {
+    ...AMIT,
+    total: amitTotal,
+    composition: amitComposition
+  };
+
+  const swetaDynamic = {
+    ...SWETA,
+    total: swetaTotal,
+    composition: swetaComposition
+  };
+
+  const compactFmt = (v) => {
+    if (v >= 10000000) return `₹${(v / 10000000).toFixed(2)}Cr`;
+    if (v >= 100000) return `₹${(v / 100000).toFixed(2)}L`;
+    return fmt(v);
+  };
 
   const tabs = [
-    { id: 'overview', label: '🏠 Overview', desc: 'Combined Family' },
-    { id: 'amit',     label: '👨 Amit',    desc: '₹52,50,016' },
-    { id: 'sweta',    label: '👩 Sweta',   desc: '₹14,32,565' },
+    { id: 'overview', label: '🏠 Overview', desc: `Combined: ${compactFmt(combinedTotal)}` },
+    { id: 'amit',     label: '👨 Amit',    desc: compactFmt(amitTotal) },
+    { id: 'sweta',    label: '👩 Sweta',   desc: compactFmt(swetaTotal) },
   ];
 
   return (
@@ -570,7 +777,7 @@ export default function PortfolioDashboard() {
             onClick={() => setTab(t.id)}
             style={{
               flex: '1 1 auto',
-              padding: '10px 20px',
+              padding: '8px 16px',
               borderRadius: 10,
               border: 'none',
               cursor: 'pointer',
@@ -586,17 +793,42 @@ export default function PortfolioDashboard() {
               textAlign: 'center',
             }}
           >
-            <div style={{ fontSize: '0.88rem' }}>{t.label}</div>
-            <div style={{ fontSize: '0.72rem', opacity: 0.8, marginTop: 1 }}>{t.desc}</div>
+            <div style={{ fontSize: '0.8rem' }}>{t.label}</div>
+            <div style={{ fontSize: '0.65rem', opacity: 0.8, marginTop: 1 }}>{t.desc}</div>
           </button>
         ))}
       </div>
 
       {/* ── Tab Content ──────────────────────────────────────── */}
       <div style={{ animation: 'rise-in 0.25s ease-out' }}>
-        {tab === 'overview' && <OverviewTab />}
-        {tab === 'amit'     && <PersonTab person={AMIT} gradient="linear-gradient(135deg, #6b2737 0%, #9b2226 40%, #b5451b 100%)" />}
-        {tab === 'sweta'    && <PersonTab person={SWETA} gradient="linear-gradient(135deg, #1d3a6e 0%, #264F8B 50%, #3b5fc0 100%)" />}
+        {tab === 'overview' && (
+          <OverviewTab
+            amitTotal={amitTotal}
+            swetaTotal={swetaTotal}
+            combinedTotal={combinedTotal}
+            combinedPie={combinedComposition}
+          />
+        )}
+        {tab === 'amit' && (
+          <PersonTab
+            person={amitDynamic}
+            gradient="linear-gradient(135deg, #6b2737 0%, #9b2226 40%, #b5451b 100%)"
+            personKey="amit"
+            assets={customAssets.amit}
+            onSave={handleSaveCustomAssets}
+            isAuthorized={isAuthorized}
+          />
+        )}
+        {tab === 'sweta' && (
+          <PersonTab
+            person={swetaDynamic}
+            gradient="linear-gradient(135deg, #1d3a6e 0%, #264F8B 50%, #3b5fc0 100%)"
+            personKey="sweta"
+            assets={customAssets.sweta}
+            onSave={handleSaveCustomAssets}
+            isAuthorized={isAuthorized}
+          />
+        )}
       </div>
     </div>
   );
