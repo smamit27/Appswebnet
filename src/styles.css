@@ -1010,3 +1010,91 @@ p:last-child { margin-bottom: 0; }
   to { transform: translateX(0); opacity: 1; }
 }
 
+/* ── Premium Portfolio Styling ─────────────────────────────────── */
+.portfolio-tab-nav {
+  display: flex;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  position: relative;
+  gap: 4px;
+}
+
+.portfolio-tab-pill {
+  flex: 1 1 auto;
+  padding: 8px 16px;
+  border-radius: 9px;
+  border: none;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  color: var(--muted);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.portfolio-tab-pill--active {
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.portfolio-tab-pill--overview.portfolio-tab-pill--active {
+  background: linear-gradient(135deg, #0f3460, #7c3aed);
+}
+
+.portfolio-tab-pill--amit.portfolio-tab-pill--active {
+  background: linear-gradient(135deg, #9b2226, #b5451b);
+}
+
+.portfolio-tab-pill--sweta.portfolio-tab-pill--active {
+  background: linear-gradient(135deg, #264F8B, #1d3a6e);
+}
+
+.portfolio-card--glass {
+  background: rgba(255, 252, 246, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(138, 114, 82, 0.12);
+}
+
+.portfolio-card--hover {
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s ease;
+}
+
+.portfolio-card--hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px -10px rgba(138, 114, 82, 0.18);
+}
+
+/* Custom Chart Tooltip Styling */
+.portfolio-tooltip {
+  background: rgba(25, 26, 21, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 12px 16px;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  color: #fff;
+}
+
+.portfolio-tooltip__title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.portfolio-tooltip__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin-top: 4px;
+}

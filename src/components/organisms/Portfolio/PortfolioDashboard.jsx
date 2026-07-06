@@ -138,18 +138,18 @@ const BarTip = ({ active, payload, label, data }) => {
   if (!active || !payload?.length) return null;
   const row = data?.find(r => r.month === label);
   return (
-    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', boxShadow: '0 4px 16px rgba(0,0,0,.1)', fontSize: '0.82rem', minWidth: 190 }}>
-      <div style={{ fontWeight: 700, marginBottom: 6 }}>{label}</div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, marginBottom: 3 }}>
-        <span style={{ color: '#64748b' }}>Portfolio Value</span>
-        <strong>{fmt(payload[0]?.value)}</strong>
+    <div className="portfolio-tooltip" style={{ minWidth: 190 }}>
+      <p className="portfolio-tooltip__title" style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 6, marginBottom: 6 }}>{label}</p>
+      <div className="portfolio-tooltip__item">
+        <span style={{ color: 'rgba(255,255,255,0.7)' }}>Value</span>
+        <span style={{ color: '#fff', fontWeight: 700 }}>{fmt(payload[0]?.value)}</span>
       </div>
       {row?.change != null && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
-          <span style={{ color: '#64748b' }}>Monthly Change</span>
-          <strong style={{ color: row.change >= 0 ? '#16a34a' : '#dc2626' }}>
+        <div className="portfolio-tooltip__item" style={{ marginTop: 6 }}>
+          <span style={{ color: 'rgba(255,255,255,0.7)' }}>Change</span>
+          <span style={{ color: row.change >= 0 ? '#86efac' : '#fca5a5', fontWeight: 700 }}>
             {row.change >= 0 ? '+' : ''}{fmt(row.change)} ({row.pct >= 0 ? '+' : ''}{row.pct}%)
-          </strong>
+          </span>
         </div>
       )}
     </div>
@@ -251,33 +251,77 @@ function MonthlyTable({ data, accentColor }) {
 
 /* ─── Composition Table ──────────────────────────────────────── */
 function CompositionTable({ rows, total, accentColor }) {
+  const [expandedRow, setExpandedRow] = useState(null);
+
+  const getDetails = (name) => {
+    if (name.includes('Equities')) return 'Direct Indian Equity stock holdings held in Demat account (NSDL CAS).';
+    if (name.includes('Mutual Funds (M)')) return 'Dematerialized Mutual Fund units tracked in Demat account.';
+    if (name.includes('Mutual Fund Folios')) return 'Physical/Statement Mutual Fund folios mapped dynamically via CAS.';
+    if (name.includes('PPF')) return 'Public Provident Fund - Tax-free long term retirement accumulation (8.15% safe return).';
+    if (name.includes('EPF')) return 'Employee Provident Fund - Employer matched retirement scheme with tax exemption.';
+    if (name.includes('NPS')) return 'National Pension System - Market linked long-term pension fund under PFRDA.';
+    if (name.includes('Fixed Deposits')) return 'Traditional Bank Fixed Deposits for stable returns and immediate liquidity.';
+    if (name.includes('US Stocks')) return 'US Equity holdings for geographic diversification and dollar hedge.';
+    return 'Consolidated asset holdings.';
+  };
+
   return (
     <div className="table-card" style={{ fontSize: '0.8rem' }}>
-      <table style={{ width: '100%' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
-          <tr style={{ fontSize: '0.8rem' }}>
-            <th style={{ textAlign: 'left' }}>Asset Class</th>
-            <th style={{ textAlign: 'right' }}>Value</th>
-            <th style={{ textAlign: 'right' }}>%</th>
+          <tr style={{ fontSize: '0.8rem', borderBottom: '1px solid var(--line)' }}>
+            <th style={{ textAlign: 'left', padding: '8px 4px' }}>Asset Class</th>
+            <th style={{ textAlign: 'right', padding: '8px 4px' }}>Value</th>
+            <th style={{ textAlign: 'right', padding: '8px 4px' }}>%</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(row => (
-            <tr key={row.assetClass} style={{ opacity: row.value === 0 ? 0.4 : 1, fontSize: '0.8rem' }}>
-              <td style={{ fontWeight: row.value > 0 ? 600 : 400 }}>
-                {row.assetClass}
-                {row.value > 0 && <span style={{ marginLeft: 6, width: 8, height: 8, borderRadius: '50%', background: row.color || accentColor, display: 'inline-block', verticalAlign: 'middle' }} />}
-              </td>
-              <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{row.value > 0 ? fmt(row.value) : '0.00'}</td>
-              <td style={{ textAlign: 'right', color: row.value > 0 ? 'inherit' : '#94a3b8' }}>{row.pct.toFixed(2)}%</td>
-            </tr>
-          ))}
+          {rows.map(row => {
+            const isExpanded = expandedRow === row.assetClass;
+            return (
+              <React.Fragment key={row.assetClass}>
+                <tr
+                  onClick={() => setExpandedRow(isExpanded ? null : row.assetClass)}
+                  style={{
+                    opacity: row.value === 0 ? 0.4 : 1,
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                    transition: 'background 0.2s',
+                    background: isExpanded ? 'rgba(0,0,0,0.03)' : 'transparent'
+                  }}
+                  className="hover-row"
+                >
+                  <td style={{ fontWeight: row.value > 0 ? 600 : 400, padding: '10px 4px' }}>
+                    <span style={{ marginRight: 6, fontSize: '0.72rem', display: 'inline-block', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                    {row.assetClass}
+                    {row.value > 0 && <span style={{ marginLeft: 6, width: 8, height: 8, borderRadius: '50%', background: row.color || accentColor, display: 'inline-block', verticalAlign: 'middle' }} />}
+                  </td>
+                  <td style={{ textAlign: 'right', fontFamily: 'monospace', padding: '10px 4px' }}>{row.value > 0 ? fmt(row.value) : '0.00'}</td>
+                  <td style={{ textAlign: 'right', color: row.value > 0 ? 'inherit' : '#94a3b8', padding: '10px 4px' }}>{row.pct.toFixed(2)}%</td>
+                </tr>
+                {isExpanded && (
+                  <tr>
+                    <td colSpan={3} style={{
+                      padding: '8px 12px',
+                      background: 'rgba(0,0,0,0.02)',
+                      fontSize: '0.74rem',
+                      color: 'var(--muted)',
+                      borderLeft: `3px solid ${row.color || accentColor}`,
+                      lineHeight: 1.4
+                    }}>
+                      {getDetails(row.assetClass)}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            );
+          })}
         </tbody>
         <tfoot>
           <tr style={{ borderTop: '2px solid var(--line)', fontWeight: 800, fontSize: '0.8rem' }}>
-            <td>TOTAL</td>
-            <td style={{ textAlign: 'right', fontFamily: 'monospace', color: accentColor }}>{fmt(total)}</td>
-            <td style={{ textAlign: 'right', color: accentColor }}>100%</td>
+            <td style={{ padding: '10px 4px' }}>TOTAL</td>
+            <td style={{ textAlign: 'right', fontFamily: 'monospace', color: accentColor, padding: '10px 4px' }}>{fmt(total)}</td>
+            <td style={{ textAlign: 'right', color: accentColor, padding: '10px 4px' }}>100%</td>
           </tr>
         </tfoot>
       </table>
@@ -345,6 +389,27 @@ function HeaderBanner({ name, total, asOn, momChange, momPct, dpName, dpId, clie
   );
 }
 
+/* ─── Custom Tooltip ─────────────────────────────────────────── */
+function CustomTooltip({ active, payload, label }) {
+  if (active && payload && payload.length) {
+    return (
+      <div className="portfolio-tooltip">
+        <p className="portfolio-tooltip__title">{label}</p>
+        {payload.map((item, idx) => (
+          <div key={idx} className="portfolio-tooltip__item">
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: item.stroke || item.color || item.fill }} />
+              {item.name}
+            </span>
+            <span style={{ color: '#fff', fontWeight: 700 }}>{fmt(item.value)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return null;
+}
+
 /* ════════════════════════════════════════════════════════════════
    OVERVIEW TAB
    ════════════════════════════════════════════════════════════════ */
@@ -362,27 +427,27 @@ function OverviewTab({ amitTotal, swetaTotal, combinedTotal, combinedPie }) {
 
       {/* Side-by-side metric cards */}
       <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-        <div className="metric-card" style={{ background: 'linear-gradient(135deg, #9b2226 0%, #b5451b 100%)', color: '#fff', border: 'none' }}>
+        <div className="metric-card portfolio-card--hover" style={{ background: 'linear-gradient(135deg, #9b2226 0%, #b5451b 100%)', color: '#fff', border: 'none' }}>
           <p className="metric-card__label" style={{ color: 'rgba(255,255,255,0.75)' }}>Amit's Portfolio</p>
           <h3 className="metric-card__value" style={{ color: '#fff' }}>{fmt(amitTotal)}</h3>
           <p className="metric-card__detail" style={{ color: 'rgba(255,255,255,0.65)' }}>as on {AMIT.asOn}</p>
         </div>
-        <div className="metric-card" style={{ background: 'linear-gradient(135deg, #264F8B 0%, #1d3a6e 100%)', color: '#fff', border: 'none' }}>
+        <div className="metric-card portfolio-card--hover" style={{ background: 'linear-gradient(135deg, #264F8B 0%, #1d3a6e 100%)', color: '#fff', border: 'none' }}>
           <p className="metric-card__label" style={{ color: 'rgba(255,255,255,0.75)' }}>Sweta's Portfolio</p>
           <h3 className="metric-card__value" style={{ color: '#fff' }}>{fmt(swetaTotal)}</h3>
           <p className="metric-card__detail" style={{ color: 'rgba(255,255,255,0.65)' }}>as on {SWETA.asOn}</p>
         </div>
-        <div className="metric-card" style={{ background: 'linear-gradient(135deg, #0f3460 0%, #533483 100%)', color: '#fff', border: 'none' }}>
+        <div className="metric-card portfolio-card--hover" style={{ background: 'linear-gradient(135deg, #0f3460 0%, #533483 100%)', color: '#fff', border: 'none' }}>
           <p className="metric-card__label" style={{ color: 'rgba(255,255,255,0.75)' }}>Combined Family Total</p>
           <h3 className="metric-card__value" style={{ color: '#fff' }}>{fmt(combinedTotal)}</h3>
           <p className="metric-card__detail" style={{ color: 'rgba(255,255,255,0.65)' }}>Amit + Sweta</p>
         </div>
-        <div className="metric-card metric-card--teal">
+        <div className="metric-card metric-card--teal portfolio-card--hover">
           <p className="metric-card__label">Amit's Share</p>
           <h3 className="metric-card__value">{combinedTotal > 0 ? ((amitTotal / combinedTotal) * 100).toFixed(1) : 0}%</h3>
           <p className="metric-card__detail">of family portfolio</p>
         </div>
-        <div className="metric-card metric-card--pine">
+        <div className="metric-card metric-card--pine portfolio-card--hover">
           <p className="metric-card__label">Sweta's Share</p>
           <h3 className="metric-card__value">{combinedTotal > 0 ? ((swetaTotal / combinedTotal) * 100).toFixed(1) : 0}%</h3>
           <p className="metric-card__detail">of family portfolio</p>
@@ -390,20 +455,25 @@ function OverviewTab({ amitTotal, swetaTotal, combinedTotal, combinedPie }) {
       </div>
 
       {/* Combined line chart */}
-      <div className="section-card" style={{ padding: 24 }}>
+      <div className="section-card portfolio-card--glass portfolio-card--hover" style={{ padding: 24 }}>
         <p className="eyebrow">Combined Performance History</p>
         <h3 style={{ marginBottom: 4 }}>Family Portfolio Monthly Trend</h3>
         <p style={{ fontSize: '0.82rem', color: 'var(--muted)', marginBottom: 20 }}>May 2025 – Apr 2026 · Amit &amp; Sweta overlapping period</p>
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={COMBINED_TREND} margin={{ top: 10, right: 16, left: 0, bottom: 44 }}>
+            <defs>
+              <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="4" stdDeviation="6" floodOpacity="0.25"/>
+              </filter>
+            </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" vertical={false} />
             <XAxis dataKey="month" tick={{ fontSize: 9.5, fill: '#64748b' }} angle={-40} textAnchor="end" interval={0} tickLine={false} axisLine={false} />
             <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickFormatter={v => `₹${(v / 100000).toFixed(0)}L`} axisLine={false} tickLine={false} />
-            <Tooltip formatter={(v, name) => [fmt(v), name]} />
+            <Tooltip content={<CustomTooltip />} />
             <Legend wrapperStyle={{ paddingTop: 50, fontSize: '0.82rem' }} />
-            <Line type="monotone" dataKey="Amit" stroke="#9b2226" strokeWidth={2.5} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="Sweta" stroke="#264F8B" strokeWidth={2.5} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="Combined" stroke="#7c3aed" strokeWidth={2.5} strokeDasharray="6 3" dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="Amit" stroke="#9b2226" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} filter="url(#glow)" />
+            <Line type="monotone" dataKey="Sweta" stroke="#264F8B" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} filter="url(#glow)" />
+            <Line type="monotone" dataKey="Combined" stroke="#7c3aed" strokeWidth={3} strokeDasharray="6 3" dot={{ r: 4 }} activeDot={{ r: 6 }} filter="url(#glow)" />
           </LineChart>
         </ResponsiveContainer>
         <div style={{ display: 'flex', gap: 20, justifyContent: 'center', marginTop: 4, fontSize: '0.78rem', color: '#64748b' }}>
@@ -415,13 +485,13 @@ function OverviewTab({ amitTotal, swetaTotal, combinedTotal, combinedPie }) {
 
       {/* Combined composition row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
-        <div className="section-card" style={{ padding: 24 }}>
+        <div className="section-card portfolio-card--glass portfolio-card--hover" style={{ padding: 24 }}>
           <p className="eyebrow">Asset Mix</p>
           <h3 style={{ marginBottom: 4 }}>Combined Portfolio Composition</h3>
           <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: 16 }}>Amit + Sweta combined holdings</p>
           <CompositionDonut pieData={combinedPie} total={combinedTotal} />
         </div>
-        <div className="section-card" style={{ padding: 24 }}>
+        <div className="section-card portfolio-card--glass portfolio-card--hover" style={{ padding: 24 }}>
           <p className="eyebrow">Family Asset Breakdown</p>
           <h3 style={{ marginBottom: 16 }}>Combined Asset Class Table</h3>
           <CompositionTable rows={combinedPie} total={combinedTotal} accentColor="#7c3aed" />
@@ -430,7 +500,7 @@ function OverviewTab({ amitTotal, swetaTotal, combinedTotal, combinedPie }) {
 
       {/* Side-by-side mini summary */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-        <div className="section-card" style={{ padding: 20, borderTop: `3px solid #9b2226` }}>
+        <div className="section-card portfolio-card--glass portfolio-card--hover" style={{ padding: 20, borderTop: `3px solid #9b2226` }}>
           <p className="eyebrow" style={{ color: '#9b2226' }}>Amit Singh</p>
           <h4 style={{ marginBottom: 10, fontSize: '0.9rem' }}>Latest Statement Summary</h4>
           {[
@@ -446,7 +516,7 @@ function OverviewTab({ amitTotal, swetaTotal, combinedTotal, combinedPie }) {
             </div>
           ))}
         </div>
-        <div className="section-card" style={{ padding: 20, borderTop: `3px solid #264F8B` }}>
+        <div className="section-card portfolio-card--glass portfolio-card--hover" style={{ padding: 20, borderTop: `3px solid #264F8B` }}>
           <p className="eyebrow" style={{ color: '#264F8B' }}>Sweta Gupta</p>
           <h4 style={{ marginBottom: 10, fontSize: '0.9rem' }}>Latest Statement Summary</h4>
           {[
@@ -592,7 +662,7 @@ function PersonTab({ person, gradient, personKey, assets, onSave, isAuthorized }
       />
 
       {/* Bar Chart */}
-      <div className="section-card" style={{ padding: 24 }}>
+      <div className="section-card portfolio-card--glass portfolio-card--hover" style={{ padding: 24 }}>
         <p className="eyebrow">Performance History</p>
         <h3 style={{ marginBottom: 4 }}>Consolidated Portfolio Value — Monthly Trend</h3>
         <p style={{ fontSize: '0.82rem', color: 'var(--muted)', marginBottom: 16 }}>
@@ -607,7 +677,7 @@ function PersonTab({ person, gradient, personKey, assets, onSave, isAuthorized }
       </div>
 
       {/* Monthly Table */}
-      <div className="section-card" style={{ padding: 24 }}>
+      <div className="section-card portfolio-card--glass portfolio-card--hover" style={{ padding: 24 }}>
         <p className="eyebrow">Statement Data</p>
         <h3 style={{ marginBottom: 16 }}>Month-wise Consolidated Portfolio Value</h3>
         <MonthlyTable data={person.monthly} accentColor={accentColor} />
@@ -615,13 +685,13 @@ function PersonTab({ person, gradient, personKey, assets, onSave, isAuthorized }
 
       {/* Composition */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
-        <div className="section-card" style={{ padding: 24 }}>
+        <div className="section-card portfolio-card--glass portfolio-card--hover" style={{ padding: 24 }}>
           <p className="eyebrow">Asset Mix</p>
           <h3 style={{ marginBottom: 4 }}>Portfolio Composition</h3>
           <p style={{ fontSize: '0.8rem', color: 'var(--muted)', marginBottom: 16 }}>Summary of value of holdings of {person.name}</p>
           <CompositionDonut pieData={activePie} total={person.total} />
         </div>
-        <div className="section-card" style={{ padding: 24 }}>
+        <div className="section-card portfolio-card--glass portfolio-card--hover" style={{ padding: 24 }}>
           <p className="eyebrow">Portfolio Composition</p>
           <h3 style={{ marginBottom: 16 }}>Asset Class Breakdown</h3>
           <CompositionTable rows={person.composition} total={person.total} accentColor={accentColor} />
@@ -629,7 +699,7 @@ function PersonTab({ person, gradient, personKey, assets, onSave, isAuthorized }
       </div>
 
       {/* Account Details */}
-      <div className="section-card" style={{ padding: 24 }}>
+      <div className="section-card portfolio-card--glass portfolio-card--hover" style={{ padding: 24 }}>
         <p className="eyebrow">Account Information</p>
         <h3 style={{ marginBottom: 20 }}>Demat Account &amp; Holder Details</h3>
         <AccountCard person={person} accentColor={accentColor} />
@@ -779,32 +849,18 @@ export default function PortfolioDashboard({ isAuthorized }) {
   return (
     <div style={{ display: 'grid', gap: 20 }}>
 
-      {/* ── Tab Bar ──────────────────────────────────────────── */}
-      <div style={{ display: 'flex', gap: 6, background: 'rgba(0,0,0,0.04)', borderRadius: 14, padding: 6, border: '1px solid var(--line)', flexWrap: 'wrap' }}>
+      {/* ── Segmented iOS-Style Tab Bar ─────────────────────────── */}
+      <div className="portfolio-tab-nav">
         {tabs.map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            style={{
-              flex: '1 1 auto',
-              padding: '8px 16px',
-              borderRadius: 10,
-              border: 'none',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              background: tab === t.id
-                ? t.id === 'overview' ? 'linear-gradient(135deg, #0f3460, #7c3aed)'
-                : t.id === 'amit' ? 'linear-gradient(135deg, #9b2226, #b5451b)'
-                : 'linear-gradient(135deg, #264F8B, #1d3a6e)'
-                : '#fff',
-              color: tab === t.id ? '#fff' : '#64748b',
-              boxShadow: tab === t.id ? '0 4px 14px rgba(0,0,0,0.18)' : '0 1px 3px rgba(0,0,0,0.05)',
-              fontWeight: 700,
-              textAlign: 'center',
-            }}
+            className={`portfolio-tab-pill portfolio-tab-pill--${t.id} ${
+              tab === t.id ? 'portfolio-tab-pill--active' : ''
+            }`}
           >
-            <div style={{ fontSize: '0.8rem' }}>{t.label}</div>
-            <div style={{ fontSize: '0.65rem', opacity: 0.8, marginTop: 1 }}>{t.desc}</div>
+            <div style={{ fontSize: '0.82rem', fontWeight: 700 }}>{t.label}</div>
+            <div style={{ fontSize: '0.66rem', opacity: tab === t.id ? 0.95 : 0.75, marginTop: 2 }}>{t.desc}</div>
           </button>
         ))}
       </div>
