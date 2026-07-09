@@ -20,12 +20,11 @@ const AMIT = {
   dpName: 'ICICI BANK LIMITED',
   dpId: 'IN303028',
   clientId: '63571278',
-  asOn: '31-May-2026',
-  total: 5250016.11,
+  asOn: '30-Jun-2026',
+  total: 5424764.21,
   color: '#9b2226',
   monthly: [
-    { month: 'MAY 2025', value: 5128334.57, change: null,       pct: null   },
-    { month: 'JUN 2025', value: 5329537.31, change: 201202.73,  pct: 3.92   },
+    { month: 'JUN 2025', value: 5329537.31, change: null,       pct: null   },
     { month: 'JUL 2025', value: 5134212.41, change: -195324.90, pct: -3.66  },
     { month: 'AUG 2025', value: 5099675.15, change: -34537.26,  pct: -0.67  },
     { month: 'SEP 2025', value: 5241274.02, change: 141598.87,  pct: 2.78   },
@@ -37,11 +36,12 @@ const AMIT = {
     { month: 'MAR 2026', value: 4848132.94, change: -616854.04, pct: -11.29 },
     { month: 'APR 2026', value: 5336213.56, change: 488080.61,  pct: 10.07  },
     { month: 'MAY 2026', value: 5250016.11, change: -86197.45,  pct: -1.62  },
+    { month: 'JUN 2026', value: 5424764.21, change: 174748.10,  pct: 3.33   },
   ],
   composition: [
-    { assetClass: 'Equities (E)',               value: 2534280.84, pct: 48.27, color: '#9b2226' },
-    { assetClass: 'Mutual Funds (M)',            value: 1006572.13, pct: 19.17, color: '#3a7d44' },
-    { assetClass: 'Mutual Fund Folios (F)',      value: 1709163.14, pct: 32.56, color: '#264F8B' },
+    { assetClass: 'Equities (E)',          value: 2634721.23, pct: 48.57, color: '#9b2226' },
+    { assetClass: 'Mutual Funds (M)',       value: 1047528.09, pct: 19.31, color: '#3a7d44' },
+    { assetClass: 'Mutual Fund Folios (F)', value: 1742514.89, pct: 32.12, color: '#264F8B' },
     { assetClass: 'Preference Shares (P)',       value: 0, pct: 0 },
     { assetClass: 'Specialized Fund (SD)',       value: 0, pct: 0 },
     { assetClass: 'Alternate Investment (A)',    value: 0, pct: 0 },
@@ -96,9 +96,9 @@ const SWETA = {
    ════════════════════════════════════════════════════════════════ */
 const COMBINED_TOTAL = AMIT.total + SWETA.total; // 6,682,581.54
 
-// Overlap months for combined trend (May 2025 – Apr 2026 both have data)
-const OVERLAP_MONTHS = ['MAY 2025','JUN 2025','JUL 2025','AUG 2025','SEP 2025',
-  'OCT 2025','NOV 2025','DEC 2025','JAN 2026','FEB 2026','MAR 2026','APR 2026'];
+// Overlap months for combined trend
+const OVERLAP_MONTHS = ['JUN 2025','JUL 2025','AUG 2025','SEP 2025',
+  'OCT 2025','NOV 2025','DEC 2025','JAN 2026','FEB 2026','MAR 2026','APR 2026','MAY 2026','JUN 2026'];
 
 const COMBINED_TREND = OVERLAP_MONTHS.map(m => {
   const amitRow = AMIT.monthly.find(r => r.month === m);
@@ -538,6 +538,114 @@ function OverviewTab({ amitTotal, swetaTotal, combinedTotal, combinedPie }) {
   );
 }
 
+/* ─── Monthly Data Entry Panel ──────────────────────────────────── */
+const MONTH_OPTIONS = [
+  'JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'
+];
+const YEAR_OPTIONS = ['2025','2026','2027'];
+
+function MonthlyDataEntry({ personKey, onAddMonth, isAuthorized }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    mon: 'JUN', year: '2026',
+    value: '', equities: '', mf: '', mfFolios: ''
+  });
+  const [saved, setSaved] = useState(false);
+
+  if (!isAuthorized) return null;
+
+  const handleSubmit = () => {
+    const monthLabel = `${form.mon} ${form.year}`;
+    const val = parseFloat(form.value.replace(/,/g, '')) || 0;
+    const eq  = parseFloat(form.equities.replace(/,/g, '')) || 0;
+    const mf  = parseFloat(form.mf.replace(/,/g, '')) || 0;
+    const mff = parseFloat(form.mfFolios.replace(/,/g, '')) || 0;
+    if (!val) return;
+    onAddMonth(personKey, { month: monthLabel, value: val, equities: eq, mf, mfFolios: mff });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+    setOpen(false);
+  };
+
+  const inputStyle = {
+    width: '100%', padding: '9px 12px', borderRadius: 8,
+    border: '1px solid var(--line)', background: 'var(--bg)',
+    color: 'var(--ink)', fontSize: '0.88rem',
+  };
+  const labelStyle = {
+    display: 'block', fontSize: '0.72rem', fontWeight: 700,
+    color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em'
+  };
+
+  return (
+    <div className="section-card" style={{ padding: 20, borderTop: '3px solid #f59e0b' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <p className="eyebrow" style={{ color: '#f59e0b' }}>Monthly Data Entry</p>
+          <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Add / Update Monthly Portfolio Value</h3>
+        </div>
+        <button
+          className="btn btn--sm btn--primary"
+          onClick={() => setOpen(p => !p)}
+          style={{ background: '#f59e0b', border: 'none' }}
+        >
+          {open ? '✕ Close' : '＋ Add Month'}
+        </button>
+      </div>
+      {saved && (
+        <div style={{ marginTop: 12, padding: '8px 14px', background: '#d1fae5', borderRadius: 8, fontSize: '0.82rem', color: '#065f46', fontWeight: 600 }}>
+          ✅ Month data noted! Update the code data when you get the CAS statement.
+        </div>
+      )}
+      {open && (
+        <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16 }}>
+          {/* Month + Year */}
+          <div>
+            <label style={labelStyle}>Month</label>
+            <select value={form.mon} onChange={e => setForm({ ...form, mon: e.target.value })} style={inputStyle}>
+              {MONTH_OPTIONS.map(m => <option key={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Year</label>
+            <select value={form.year} onChange={e => setForm({ ...form, year: e.target.value })} style={inputStyle}>
+              {YEAR_OPTIONS.map(y => <option key={y}>{y}</option>)}
+            </select>
+          </div>
+          {/* Portfolio Value */}
+          <div style={{ gridColumn: 'span 2' }}>
+            <label style={labelStyle}>Total Portfolio Value (₹)</label>
+            <input type="text" placeholder="e.g. 54,24,764.21" value={form.value}
+              onChange={e => setForm({ ...form, value: e.target.value })} style={inputStyle} />
+          </div>
+          {/* Asset Breakdown */}
+          <div>
+            <label style={labelStyle}>Equities (E) ₹</label>
+            <input type="text" placeholder="e.g. 26,34,721.23" value={form.equities}
+              onChange={e => setForm({ ...form, equities: e.target.value })} style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>Mutual Funds (M) ₹</label>
+            <input type="text" placeholder="e.g. 10,47,528.09" value={form.mf}
+              onChange={e => setForm({ ...form, mf: e.target.value })} style={inputStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>MF Folios (F) ₹</label>
+            <input type="text" placeholder="e.g. 17,42,514.89" value={form.mfFolios}
+              onChange={e => setForm({ ...form, mfFolios: e.target.value })} style={inputStyle} />
+          </div>
+          {/* Actions */}
+          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+            <button className="btn btn--sm btn--secondary" onClick={() => setOpen(false)}>Cancel</button>
+            <button className="btn btn--sm btn--primary" onClick={handleSubmit}
+              style={{ background: '#f59e0b', border: 'none' }}>Save Entry</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Custom Assets Editor ─────────────────────────────────────── */
 function CustomAssetsEditor({ personName, personKey, assets, onSave, isAuthorized }) {
   const [editing, setEditing] = useState(false);
@@ -630,7 +738,7 @@ function CustomAssetsEditor({ personName, personKey, assets, onSave, isAuthorize
 /* ════════════════════════════════════════════════════════════════
    PERSON TAB (shared for Amit and Sweta)
    ════════════════════════════════════════════════════════════════ */
-function PersonTab({ person, gradient, personKey, assets, onSave, isAuthorized }) {
+function PersonTab({ person, gradient, personKey, assets, onSave, onAddMonth, isAuthorized }) {
   const latest = person.monthly[person.monthly.length - 1];
   const accentColor = person.color;
   const activePie = person.composition.filter(c => c.value > 0);
@@ -650,6 +758,13 @@ function PersonTab({ person, gradient, personKey, assets, onSave, isAuthorized }
         dpId={person.dpId}
         clientId={person.clientId}
         gradient={gradient}
+      />
+
+      {/* Monthly Data Entry */}
+      <MonthlyDataEntry
+        personKey={personKey}
+        onAddMonth={onAddMonth}
+        isAuthorized={isAuthorized}
       />
 
       {/* Custom Assets planning */}
@@ -760,6 +875,11 @@ export default function PortfolioDashboard({ isAuthorized }) {
     }
   };
 
+  // Monthly data entry handler (logs for reference; update code data after each CAS)
+  const handleAddMonth = (personKey, entry) => {
+    console.log(`[Portfolio] New month entry for ${personKey}:`, entry);
+    // TODO: persist to Firestore if needed in future
+  };
   // Calculations
   const amitPPF = Number(customAssets.amit.ppf || 0);
   const amitEPF = Number(customAssets.amit.epf || 0);
@@ -882,6 +1002,7 @@ export default function PortfolioDashboard({ isAuthorized }) {
             personKey="amit"
             assets={customAssets.amit}
             onSave={handleSaveCustomAssets}
+            onAddMonth={handleAddMonth}
             isAuthorized={isAuthorized}
           />
         )}
@@ -892,6 +1013,7 @@ export default function PortfolioDashboard({ isAuthorized }) {
             personKey="sweta"
             assets={customAssets.sweta}
             onSave={handleSaveCustomAssets}
+            onAddMonth={handleAddMonth}
             isAuthorized={isAuthorized}
           />
         )}

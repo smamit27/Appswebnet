@@ -15,9 +15,14 @@ import FuturePurchases   from './components/organisms/FuturePurchases.jsx';
 import PortfolioPage     from './components/organisms/Portfolio/PortfolioPage.jsx';
 import AmishiActivity    from './components/organisms/AmishiActivity.jsx';
 import AmishiFees        from './components/organisms/AmishiFees.jsx';
+import AmishiProfile     from './components/organisms/AmishiProfile.jsx';
 import DietPlan          from './components/organisms/DietPlan.jsx';
 import FamilyCalendar    from './components/organisms/FamilyCalendar.jsx';
 import CleaningSchedule  from './components/organisms/CleaningSchedule.jsx';
+import CombinedHealthDashboard from './components/organisms/CombinedHealthDashboard.jsx';
+import DocumentTracker from './components/organisms/DocumentTracker.jsx';
+import BillReminders from './components/organisms/BillReminders.jsx';
+import HealthMetrics from './components/organisms/HealthMetrics.jsx';
 import { db } from './firebase.js';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import AIChatButton from './components/organisms/AIChatButton.jsx';
@@ -106,6 +111,34 @@ const ICONS = {
       <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>
     </svg>
   ),
+  document: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+      <polyline points="14 2 14 8 20 8"></polyline>
+      <line x1="16" y1="13" x2="8" y2="13"></line>
+      <line x1="16" y1="17" x2="8" y2="17"></line>
+      <polyline points="10 9 9 9 8 9"></polyline>
+    </svg>
+  ),
+  bill: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <line x1="2" y1="10" x2="22" y2="10" />
+    </svg>
+  ),
+  vitals: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+    </svg>
+  ),
+  profile: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      <line x1="9" y1="10" x2="9" y2="10" strokeWidth="3" strokeLinecap="round"/>
+      <line x1="12" y1="10" x2="12" y2="10" strokeWidth="3" strokeLinecap="round"/>
+      <line x1="15" y1="10" x2="15" y2="10" strokeWidth="3" strokeLinecap="round"/>
+    </svg>
+  ),
 };
 
 /* ── No Mock fallback data ─────────────────────────────────────────── */
@@ -115,23 +148,24 @@ const NAV = [
   { group: 'Home',   items: [{ id: 'overview',  label: 'Overview'       }] },
   { group: 'Finance',items: [
     { id: 'finance',   label: 'Income & Expenses' },
+    { id: 'bills',     label: 'Bill Reminders', iconId: 'bill' },
     { id: 'lending',   label: 'Money Lent' },
     { id: 'wishlist',  label: 'Future Purchases' },
     { id: 'portfolio', label: 'Investment Portfolio' }
   ] },
-  { group: 'Amit', items: [
-    { id: 'amitDiet', label: 'Gym & Diet', iconId: 'diet' }
-  ]},
-  { group: 'Sweta', items: [
-    { id: 'swetaDiet', label: 'Gym & Diet', iconId: 'diet' }
+  { group: 'Health & Fitness', items: [
+    { id: 'gymDiet', label: 'Gym & Diet', iconId: 'diet' },
+    { id: 'healthMetrics', label: 'Vitals & Metrics', iconId: 'vitals' }
   ]},
   { group: 'Amishi', items: [
     { id: 'activity', label: 'Daily Activity' },
-    { id: 'fees',     label: 'School Fees' }
+    { id: 'fees',     label: 'School Fees' },
+    { id: 'profile',  label: 'Q&A Profile', iconId: 'profile' }
   ]},
   { group: 'Family', items: [
     { id: 'calendar',  label: 'Family Calendar' },
-    { id: 'cleaning',  label: 'Cleaning Schedule' }
+    { id: 'cleaning',  label: 'Cleaning Schedule' },
+    { id: 'documents', label: 'Document Tracker', iconId: 'document' }
   ] },
 ];
 
@@ -307,6 +341,10 @@ export default function App() {
               <FinancePage isAuthorized={isAuthorized} user={user} />
             )}
 
+            {activeTab === 'bills' && (
+              <BillReminders />
+            )}
+
             {activeTab === 'lending' && (
               <LendingTracker isAuthorized={isAuthorized} user={user} />
             )}
@@ -319,9 +357,20 @@ export default function App() {
               <PortfolioPage isAuthorized={isAuthorized} user={user} />
             )}
 
+            {activeTab === 'gymDiet' && (
+              <CombinedHealthDashboard
+                amitGymItems={amitGym.items}
+                swetaGymItems={swetaGym.items}
+                amitGymAdd={amitGym.add}
+                amitGymDelete={amitGym.remove}
+                swetaGymAdd={swetaGym.add}
+                swetaGymDelete={swetaGym.remove}
+                isAuthorized={isAuthorized}
+              />
+            )}
 
-            {(activeTab === 'amitDiet' || activeTab === 'swetaDiet') && (
-              <DietPlan name={activeTab === 'amitDiet' ? 'Amit' : 'Sweta'} />
+            {activeTab === 'healthMetrics' && (
+              <HealthMetrics />
             )}
 
             {activeTab === 'activity' && (
@@ -330,6 +379,10 @@ export default function App() {
                 isAuthorized={isAuthorized}
                 onSaveDay={handleSaveActivityDay}
               />
+            )}
+
+            {activeTab === 'profile' && (
+              <AmishiProfile user={user} />
             )}
 
             {activeTab === 'fees' && (
@@ -353,6 +406,10 @@ export default function App() {
 
             {activeTab === 'cleaning' && (
               <CleaningSchedule />
+            )}
+
+            {activeTab === 'documents' && (
+              <DocumentTracker />
             )}
           </div>
         </main>

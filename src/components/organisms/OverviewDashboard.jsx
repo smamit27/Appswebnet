@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import MetricCard from '../molecules/MetricCard.jsx';
 import ProgressBar from '../atoms/ProgressBar.jsx';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend
 } from 'recharts';
 
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
@@ -61,7 +61,8 @@ export default function OverviewDashboard({ financeItems, gymItems, activityItem
       const items = financeItems.filter(t => (t.date || '').startsWith(key));
       const income  = items.filter(t => t.type === 'Income').reduce((s, t) => s + (t.amount || 0), 0);
       const expense = items.filter(t => t.type === 'Expense').reduce((s, t) => s + (t.amount || 0), 0);
-      months.push({ month: label, Income: income, Expense: expense });
+      const savings = income - expense;
+      months.push({ month: label, Income: income, Expense: expense, Savings: savings });
     }
     return months;
   }, [financeItems]);
@@ -137,20 +138,37 @@ export default function OverviewDashboard({ financeItems, gymItems, activityItem
       {/* Finance Trend + Upcoming Events */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.6fr) minmax(0,1fr)', gap: 16 }}>
         {/* Finance Trend Chart */}
-        <div className="section-card" style={{ padding: '20px 20px 12px' }}>
+        <div className="section-card" style={{ padding: '20px 20px 16px' }}>
           <p className="eyebrow">6-Month Finance Trend</p>
-          <h3 style={{ marginBottom: 16 }}>Income vs Expenses</h3>
+          <h3 style={{ marginBottom: 4 }}>Income, Expenses &amp; Savings</h3>
+          {/* Legend */}
+          <div style={{ display: 'flex', gap: 20, marginBottom: 14, flexWrap: 'wrap' }}>
+            {[
+              { label: 'Income',  color: '#31553e' },
+              { label: 'Expense', color: '#c2644a' },
+              { label: 'Savings', color: '#2563eb' },
+            ].map(l => (
+              <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#5f665f', fontWeight: 600 }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: l.color, display: 'inline-block' }} />
+                {l.label}
+              </div>
+            ))}
+          </div>
           <div className="chart-wrap">
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={210}>
               <AreaChart data={trendData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="gIncome"  x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#31553e" stopOpacity={0.25}/>
+                  <linearGradient id="gIncome" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#31553e" stopOpacity={0.22}/>
                     <stop offset="95%" stopColor="#31553e" stopOpacity={0}/>
                   </linearGradient>
                   <linearGradient id="gExpense" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#c2644a" stopOpacity={0.2}/>
+                    <stop offset="5%"  stopColor="#c2644a" stopOpacity={0.18}/>
                     <stop offset="95%" stopColor="#c2644a" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="gSavings" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#2563eb" stopOpacity={0.2}/>
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(61,63,52,0.08)" />
@@ -163,6 +181,7 @@ export default function OverviewDashboard({ financeItems, gymItems, activityItem
                 />
                 <Area type="monotone" dataKey="Income"  stroke="#31553e" strokeWidth={2} fill="url(#gIncome)" />
                 <Area type="monotone" dataKey="Expense" stroke="#c2644a" strokeWidth={2} fill="url(#gExpense)" />
+                <Area type="monotone" dataKey="Savings" stroke="#2563eb" strokeWidth={2} fill="url(#gSavings)" strokeDasharray="5 3" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
