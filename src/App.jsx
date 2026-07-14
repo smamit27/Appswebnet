@@ -23,6 +23,7 @@ import CombinedHealthDashboard from './components/organisms/CombinedHealthDashbo
 import DocumentTracker from './components/organisms/DocumentTracker.jsx';
 import BillReminders from './components/organisms/BillReminders.jsx';
 import HealthMetrics from './components/organisms/HealthMetrics.jsx';
+import PurchasesTracker from './components/organisms/PurchasesTracker.jsx';
 import { db } from './firebase.js';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import AIChatButton from './components/organisms/AIChatButton.jsx';
@@ -40,6 +41,12 @@ const ICONS = {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="1" x2="12" y2="23"/>
       <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+    </svg>
+  ),
+  purchases: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
     </svg>
   ),
   lending: (
@@ -148,6 +155,7 @@ const NAV = [
   { group: 'Home',   items: [{ id: 'overview',  label: 'Overview'       }] },
   { group: 'Finance',items: [
     { id: 'finance',   label: 'Income & Expenses' },
+    { id: 'purchases', label: 'Purchases Tracker' },
     { id: 'bills',     label: 'Bill Reminders', iconId: 'bill' },
     { id: 'lending',   label: 'Money Lent' },
     { id: 'wishlist',  label: 'Future Purchases' },
@@ -185,6 +193,7 @@ export default function App() {
   const activity = useCollection('activities/amishi/daily', [],   user, 'date', 'desc');
   const fees     = useCollection(feesSession === '2026-27' ? 'activities/amishi/fees' : `activities/amishi/fees_${feesSession.replace('-', '_')}`,  [],   user, 'id', 'asc');
   const calendar = useCollection('familyEvents',            [],   user, 'date', 'asc');
+  const purchases = useCollection('purchases', [], user);
 
   // For the Overview we need a quick summary of finance — fetch latest month snapshot
   const [financeSnap, setFinanceSnap] = useState({ swetaIncome: 0, swetaExpense: 0, amitIncome: 0, amitExpense: 0 });
@@ -339,6 +348,10 @@ export default function App() {
 
             {activeTab === 'finance' && (
               <FinancePage isAuthorized={isAuthorized} user={user} />
+            )}
+
+            {activeTab === 'purchases' && (
+              <PurchasesTracker purchases={purchases} isAuthorized={isAuthorized} user={user} />
             )}
 
             {activeTab === 'bills' && (

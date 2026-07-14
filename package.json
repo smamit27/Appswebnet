@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "deploy:hosting": "npm run build && npx firebase-tools deploy --only hosting",
-    "deploy:full": "npm run build && npx firebase-tools deploy --only hosting,firestore:rules,firestore:indexes"
+    "deploy:full": "npm run build && npx firebase-tools deploy --only hosting,firestore:rules,firestore:indexes",
+    "deploy": "npm run deploy:full"
   },
   "dependencies": {
     "@google/genai": "^2.10.0",

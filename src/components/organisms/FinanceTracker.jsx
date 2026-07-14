@@ -42,7 +42,7 @@ const fmtAmtDec = (v) => Number(v).toLocaleString('en-IN', { minimumFractionDigi
 
 const INR = '₹';
 
-const INCOME_CATEGORIES = ['Salary', 'Freelance', 'Investments', 'Dividend', 'Rent Received', 'Business', 'Other Income'];
+const INCOME_CATEGORIES = ['Salary', 'Freelance', 'Investments', 'Dividend', 'Interest', 'Rent Received', 'Business', 'Other Income'];
 const EXPENSE_CATEGORIES = ['Food & Dining', 'Transport', 'Shopping', 'Bills & Utilities', 'Home', 'Home Loan EMI', 'Investments', 'Credit Card Payment', 'House Help', 'Monthly Maintenance', 'Healthcare', 'Entertainment', 'Education', 'Others'];
 const PAYMENT_METHODS = [
   'HDFC Bank',
@@ -61,7 +61,7 @@ const PAYMENT_METHODS = [
 ];
 
 const CATEGORY_ICONS = {
-  'Salary': '💼', 'Freelance': '🖥️', 'Investments': '📈', 'Dividend': '🪙', 'Rent Received': '🏠',
+  'Salary': '💼', 'Freelance': '🖥️', 'Investments': '📈', 'Dividend': '🪙', 'Interest': '💸', 'Rent Received': '🏠',
   'Business': '🏢', 'Other Income': '💰',
   'Food & Dining': '🍔', 'Transport': '🚗', 'Shopping': '🛍️',
   'Bills & Utilities': '⚡', 'Home': '🏡', 'Home Loan EMI': '🏦', 'Investments': '📈', 'Credit Card Payment': '💳', 'House Help': '🧹', 'Monthly Maintenance': '🛠️', 'Healthcare': '💊',
@@ -72,7 +72,7 @@ const CATEGORY_COLORS = {
   'Food & Dining': '#FF6B6B', 'Transport': '#4ECDC4', 'Shopping': '#FFE66D',
   'Bills & Utilities': '#A29BFE', 'Home': '#FD79A8', 'Home Loan EMI': '#4a90e2', 'Investments': '#FDCB6E', 'Credit Card Payment': '#6c5ce7', 'House Help': '#e17055', 'Monthly Maintenance': '#e67e22', 'Healthcare': '#74B9FF',
   'Entertainment': '#FF7675', 'Education': '#55EFC4', 'Others': '#B2BEC3',
-  'Salary': '#00B894', 'Freelance': '#6C5CE7', 'Investments': '#FDCB6E', 'Dividend': '#20bf6b',
+  'Salary': '#00B894', 'Freelance': '#6C5CE7', 'Investments': '#FDCB6E', 'Dividend': '#20bf6b', 'Interest': '#45aaf2',
   'Rent Received': '#E17055', 'Business': '#00CEC9', 'Other Income': '#A29BFE',
 };
 
@@ -81,7 +81,7 @@ const EMPTY_INCOME = () => ({
   source: '',
   amount: '',
   remark: '',
-  category: 'Salary',
+  category: '',
   creditedTo: 'HDFC Bank',
   type: 'income'
 });
@@ -91,7 +91,7 @@ const EMPTY_EXPENSE = () => ({
   vendor: '',
   amount: '',
   purpose: '',
-  category: 'Food & Dining',
+  category: '',
   paymentMode: 'HDFC Bank',
   refNo: '',
   type: 'expense'
@@ -210,6 +210,7 @@ function AddTransactionModal({ isOpen, onClose, onSave, isAuthorized }) {
                   onChange={e => handleField('category', e.target.value)}
                   className="ft-input ft-select"
                 >
+                  <option value="">Select category</option>
                   {currentCats.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
@@ -833,7 +834,7 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
                     </div>
                   </div>
 
-                  {/* Row: Date + Account */}
+                  {/* Row: Date + Category */}
                   <div className="ft-popup-row">
                     <div className="ft-field">
                       <label className="ft-label">Date <span className="ft-required">*</span></label>
@@ -844,6 +845,29 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
                           className="ft-input" />
                       </div>
                     </div>
+                    <div className="ft-field">
+                      <label className="ft-label">Category <span className="ft-required">*</span></label>
+                      <div className="ft-input-wrap ft-input-wrap--icon">
+                        <span className="ft-input-icon">🏷️</span>
+                        <select
+                          required
+                          value={formData.category}
+                          onChange={e => handleFormField('category', e.target.value)}
+                          className="ft-input ft-select"
+                        >
+                          <option value="">Select category</option>
+                          {currentCats.map(cat => (
+                            <option key={cat} value={cat}>
+                              {(CATEGORY_ICONS[cat] || '📦') + ' ' + cat}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row: Account + Source/Payee */}
+                  <div className="ft-popup-row">
                     <div className="ft-field">
                       <label className="ft-label">Account</label>
                       <div className="ft-input-wrap ft-input-wrap--icon">
@@ -857,10 +881,6 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
                         </select>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Row: Source/Payee + Note */}
-                  <div className="ft-popup-row">
                     <div className="ft-field">
                       <label className="ft-label">
                         {formOpen === 'income' ? 'Source' : 'Payee'}
@@ -875,15 +895,17 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
                           className="ft-input" />
                       </div>
                     </div>
-                    <div className="ft-field">
-                      <label className="ft-label">Note <span className="ft-label-opt">(optional)</span></label>
-                      <div className="ft-input-wrap">
-                        <input type="text"
-                          placeholder="Add a short note…"
-                          value={formOpen === 'income' ? (formData.remark||'') : (formData.purpose||'')}
-                          onChange={e => handleFormField(formOpen === 'income' ? 'remark' : 'purpose', e.target.value)}
-                          className="ft-input" />
-                      </div>
+                  </div>
+
+                  {/* Note (full width) */}
+                  <div className="ft-field">
+                    <label className="ft-label">Note <span className="ft-label-opt">(optional)</span></label>
+                    <div className="ft-input-wrap">
+                      <input type="text"
+                        placeholder="Add a short note…"
+                        value={formOpen === 'income' ? (formData.remark||'') : (formData.purpose||'')}
+                        onChange={e => handleFormField(formOpen === 'income' ? 'remark' : 'purpose', e.target.value)}
+                        className="ft-input" />
                     </div>
                   </div>
                 </div>
@@ -902,34 +924,6 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
                   </button>
                 </div>
               </form>
-
-              {/* Right: Category Picker */}
-              <div className="ft-popup-cats">
-                <p className="ft-popup-cats-title">Select Category</p>
-                <div className="ft-popup-cat-grid">
-                  {currentCats.map(cat => {
-                    const isActive = formData.category === cat;
-                    const accentColor = formOpen === 'income' ? '#10b981' : '#ef4444';
-                    const accentBg   = formOpen === 'income' ? '#f0fdf4' : '#fef2f2';
-                    return (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => handleFormField('category', cat)}
-                        className="ft-popup-cat-btn"
-                        style={{
-                          border: `2px solid ${isActive ? accentColor : '#e5e7eb'}`,
-                          background: isActive ? accentBg : '#fff',
-                        }}
-                      >
-                        <span className="ft-popup-cat-emoji">{CATEGORY_ICONS[cat] || '📦'}</span>
-                        <span className="ft-popup-cat-name">{cat}</span>
-                        {isActive && <span className="ft-popup-cat-check" style={{ color: accentColor }}>✓</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -1052,7 +1046,7 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
                           Date {sortField === 'date' && (sortDirection === 'asc' ? ' ▲' : ' ▼')}
                         </th>
                         <th>Description</th>
-                        <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('category')}>
+                        <th className="ft-tx-cat-col" style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('category')}>
                           Category {sortField === 'category' && (sortDirection === 'asc' ? ' ▲' : ' ▼')}
                         </th>
                         <th>Account</th>
@@ -1066,7 +1060,7 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
                       {displayTx.map(tx => {
                         const isIncome = tx._type === 'income';
                         const name = isIncome ? (tx.source || '—') : (tx.vendor || '—');
-                        const sub = isIncome ? (tx.remark || tx.category) : (tx.purpose || tx.category);
+                        const sub = isIncome ? tx.remark : tx.purpose;
                         const account = isIncome ? tx.creditedTo : tx.paymentMode;
                         const amount = toNum(tx.amount);
                         const cat = tx.category || (isIncome ? 'Income' : 'Expense');
@@ -1080,11 +1074,16 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
                                 <span className="ft-tx-cat-icon">{CATEGORY_ICONS[cat] || '💳'}</span>
                                 <div>
                                   <div className="ft-tx-name">{name}</div>
-                                  {sub && <div className="ft-tx-sub">{sub}</div>}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                                    <span className="ft-tx-mobile-cat" style={{ background: (CATEGORY_COLORS[cat] || '#6b7280') + '22', color: CATEGORY_COLORS[cat] || '#6b7280' }}>
+                                      {cat}
+                                    </span>
+                                    {sub && <span className="ft-tx-sub" style={{ marginTop: 0 }}>{sub}</span>}
+                                  </div>
                                 </div>
                               </div>
                             </td>
-                            <td>
+                            <td className="ft-tx-cat-col">
                               <span className="ft-tx-cat-pill" style={{ background: (CATEGORY_COLORS[cat] || '#6b7280') + '22', color: CATEGORY_COLORS[cat] || '#6b7280' }}>
                                 {cat}
                               </span>

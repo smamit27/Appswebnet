@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════════
-   Finance Tracker — Modern Dashboard Redesign
-   Matches the reference design with metric cards, tables, charts
+   Finance Tracker — 3D Light Edition
+   Warm glass surfaces, teal accents, 3D depth transforms
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ── Root ── */
@@ -20,12 +20,13 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: rgba(255,255,255,0.8);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(0,0,0,0.06);
-  border-radius: 14px;
+  background: rgba(255,255,255,0.88);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(61,63,52,0.10);
+  border-radius: 16px;
   padding: 10px 14px;
   flex-wrap: wrap;
+  box-shadow: 0 4px 16px rgba(42,49,46,0.06);
 }
 .ft-month-tabs {
   display: flex;
@@ -37,28 +38,32 @@
 .ft-month-tabs::-webkit-scrollbar { display: none; }
 
 .ft-month-tab {
-  flex: 0 0 auto;
-  padding: 6px 14px;
-  border: 1.5px solid rgba(0,0,0,0.1);
-  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
   background: transparent;
-  color: #6b7280;
-  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.82rem;
   font-weight: 600;
-  font-size: 0.75rem;
+  cursor: pointer;
   white-space: nowrap;
-  transition: all 0.2s ease;
+  flex-shrink: 0;
+  transition: all 0.25s ease;
 }
 .ft-month-tab:hover {
-  border-color: rgba(59,130,246,0.3);
-  color: #3b82f6;
-  background: rgba(59,130,246,0.05);
+  background: rgba(25,108,108,0.07);
+  color: var(--teal);
+  border-color: rgba(25,108,108,0.12);
 }
 .ft-month-tab--active {
-  border-color: transparent;
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  background: var(--teal);
   color: #fff;
-  box-shadow: 0 4px 12px rgba(59,130,246,0.3);
+  box-shadow: 0 4px 14px rgba(25,108,108,0.3);
+  border-color: transparent;
 }
 
 .ft-month-actions {
@@ -227,27 +232,45 @@
 /* ── Metric Cards ── */
 .ft-metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 14px;
-  min-width: 0;
 }
 
 .ft-metric-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 18px 20px;
-  background: #fff;
-  border-radius: 16px;
-  border: 1px solid rgba(0,0,0,0.06);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  transition: all 0.25s ease;
+  position: relative;
+  padding: 18px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(61,63,52,0.10);
+  background: rgba(255,252,247,0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: transform 0.35s cubic-bezier(0.23, 1, 0.32, 1), box-shadow 0.35s ease;
+  animation: card-enter 0.55s cubic-bezier(0.23, 1, 0.32, 1) both;
+  transform-style: preserve-3d;
+  box-shadow: 0 4px 20px rgba(42,49,46,0.08);
 }
-.ft-metric-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+.ft-metric-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.6) 0%, transparent 55%);
+  pointer-events: none;
 }
+.ft-metric-card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent);
+  pointer-events: none;
+}
+.ft-metric-card:hover { transform: translateY(-6px) rotateX(-2deg); box-shadow: 0 16px 48px rgba(42,49,46,0.14); }
+.ft-metric-card:nth-child(1) { animation-delay: 0ms; }
+.ft-metric-card:nth-child(2) { animation-delay: 80ms; }
+.ft-metric-card:nth-child(3) { animation-delay: 160ms; }
+.ft-metric-card:nth-child(4) { animation-delay: 240ms; }
 
 .ft-metric-icon {
   width: 44px;
@@ -265,22 +288,9 @@
 .ft-metric-icon--purple { background: #f5f3ff; }
 
 .ft-metric-body { flex: 1; min-width: 0; }
-.ft-metric-label {
-  display: block;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: #9ca3af;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 3px;
-}
-.ft-metric-value {
-  font-size: 1.3rem;
-  font-weight: 800;
-  color: #111827;
-  line-height: 1.2;
-  font-family: var(--heading-font, inherit);
-}
+.ft-metric-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); position: relative; z-index: 1; }
+.ft-metric-value { font-size: 1.5rem; font-weight: 800; font-family: var(--heading-font, serif); line-height: 1.1; position: relative; z-index: 1; color: var(--ink); }
+.ft-metric-sub   { font-size: 0.75rem; position: relative; z-index: 1; color: var(--muted); }
 .ft-metric-change {
   font-size: 0.72rem;
   font-weight: 600;
@@ -405,6 +415,7 @@
   overflow-x: auto;
   overflow-y: auto;
   max-height: 440px;
+  border-radius: 0 0 16px 16px;
 }
 .ft-tx-table {
   width: 100%;
@@ -412,32 +423,36 @@
   font-size: 0.82rem;
 }
 .ft-tx-table thead tr {
-  background: #f9fafb;
+  background: rgba(244,239,231,0.95);
   position: sticky;
   top: 0;
   z-index: 1;
+  backdrop-filter: blur(12px);
 }
 .ft-tx-table thead th {
   padding: 10px 16px;
   text-align: left;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #9ca3af;
-  border-bottom: 1px solid #f3f4f6;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  border-bottom: 1px solid rgba(61,63,52,0.08);
   white-space: nowrap;
 }
 .ft-tx-row {
-  transition: background 0.15s ease;
-  border-bottom: 1px solid #f9fafb;
+  transition: background 0.2s ease, transform 0.2s ease;
+  border-bottom: 1px solid rgba(61,63,52,0.05);
 }
-.ft-tx-row:hover { background: #f9fafb; }
-.ft-tx-row--purchase { background: #fff7ed; }
+.ft-tx-row:hover {
+  background: rgba(255,255,255,0.75) !important;
+  transform: translateX(4px);
+}
+.ft-tx-row--purchase { background: rgba(244,220,196,0.25); }
 .ft-tx-table td {
   padding: 12px 16px;
   vertical-align: middle;
-  color: #374151;
+  color: var(--ink);
 }
 
 .ft-tx-date { color: #9ca3af; white-space: nowrap; font-size: 0.78rem; }
@@ -752,7 +767,7 @@
   overflow: hidden;
   box-shadow: 0 32px 80px rgba(0,0,0,0.22), 0 0 0 1px rgba(0,0,0,0.04);
   width: 100%;
-  max-width: 780px;
+  max-width: 520px;
   max-height: 92vh;
   overflow-y: auto;
   animation: ft-slide-up 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -846,10 +861,10 @@
 }
 .ft-popup-close:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
 
-/* Body: 2-col layout */
+/* Body: 1-col layout */
 .ft-popup-body {
   display: grid;
-  grid-template-columns: 1fr 240px;
+  grid-template-columns: 1fr;
   min-height: 0;
 }
 
@@ -859,7 +874,6 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-  border-right: 1px solid #f3f4f6;
 }
 .ft-popup-fields {
   display: flex;
@@ -1271,7 +1285,7 @@
 @media (max-width: 600px) {
   .ft-metrics-grid { grid-template-columns: 1fr 1fr; }
   .ft-metric-value { font-size: 1rem; }
-  .ft-metric-card { padding: 14px 12px; gap: 8px; }
+  .ft-metric-spark { margin-top: 8px; height: 36px; position: relative; z-index: 1; }
   .ft-form-grid { grid-template-columns: 1fr; }
   .ft-field--full { grid-column: span 1; }
   .ft-form-actions { grid-column: span 1; }
@@ -1285,3 +1299,24 @@
   .ft-month-actions { gap: 4px; }
   .ft-add-income-btn, .ft-add-expense-btn { padding: 7px 10px; font-size: 0.78rem; }
 }
+
+/* Responsive Table Category Styles */
+.ft-tx-mobile-cat {
+  display: none;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+@media (max-width: 768px) {
+  .ft-tx-cat-col {
+    display: none !important;
+  }
+  .ft-tx-mobile-cat {
+    display: inline-block;
+  }
+}
+

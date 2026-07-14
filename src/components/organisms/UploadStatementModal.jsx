@@ -16,11 +16,17 @@ function formatMonthFull(yyyyMm) {
   }
 }
 
-export default function UploadStatementModal({ isOpen, onClose, onUploadComplete }) {
-  const [person, setPerson] = useState('amit');
+export default function UploadStatementModal({ isOpen, onClose, onUploadComplete, initialPerson = 'family' }) {
+  const [person, setPerson] = useState(initialPerson);
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef(null);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setPerson(initialPerson);
+    }
+  }, [isOpen, initialPerson]);
 
   if (!isOpen) return null;
 
@@ -34,7 +40,7 @@ export default function UploadStatementModal({ isOpen, onClose, onUploadComplete
     reader.onload = async (evt) => {
       try {
         const bstr = evt.target.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wb = XLSX.read(bstr, { type: 'binary', cellDates: true, dateNF: 'dd/mm/yyyy' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false });
@@ -73,7 +79,20 @@ export default function UploadStatementModal({ isOpen, onClose, onUploadComplete
             continue;
           }
 
-          const dateStr = String(row[dateIdx] || '').trim();
+          let dateStr = String(row[dateIdx] || '').trim();
+          
+          // Fallback: If date is parsed as an Excel serial number
+          if (/^\d{5}(\.\d+)?$/.test(dateStr)) {
+            const serial = parseFloat(dateStr);
+            const dateObj = new Date(Math.round((serial - 25569) * 86400 * 1000));
+            if (!isNaN(dateObj.getTime())) {
+              const day = String(dateObj.getDate()).padStart(2, '0');
+              const monthNum = String(dateObj.getMonth() + 1).padStart(2, '0');
+              const year = dateObj.getFullYear();
+              dateStr = `${day}/${monthNum}/${year}`;
+            }
+          }
+
           const remarks = String(row[remarkIdx] || '').trim();
           const withdrawalStr = String(row[wIdx] || '').replace(/,/g, '').trim();
           const depositStr = String(row[dIdx] || '').replace(/,/g, '').trim();
@@ -185,18 +204,9 @@ export default function UploadStatementModal({ isOpen, onClose, onUploadComplete
           </button>
         </div>
         <div style={{ padding: '0', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <p style={{ fontSize: '0.9rem', color: '#6b7280' }}>
-            Select the account and month you are uploading for, then choose your bank statement (XLS, XLSX, CSV).
+          <p style={{ fontSize: '0.9rem', color: '#6b7280', margin: 0 }}>
+            Select the month you are uploading for, then choose your bank statement (XLS, XLSX, CSV).
           </p>
-
-          <div className="field">
-            <label style={{ fontWeight: 600 }}>Account Person</label>
-            <select className="finance-register-input" value={person} onChange={(e) => setPerson(e.target.value)}>
-              <option value="sweta">Sweta</option>
-              <option value="amit">Amit</option>
-            </select>
-          </div>
-
           <div className="field">
             <label style={{ fontWeight: 600 }}>Statement Month</label>
             <input 

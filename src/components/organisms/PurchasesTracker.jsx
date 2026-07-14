@@ -28,6 +28,20 @@ export function parseLocalDate(dateStr) {
       }
     }
   }
+
+  // Format 3: DD/MM/YYYY or DD/MM/YY (e.g. 12/06/2026)
+  if (dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      const day = Number(parts[0]);
+      const month = Number(parts[1]);
+      let year = Number(parts[2]);
+      if (year < 100) year += 2000;
+      if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+        return new Date(year, month - 1, day);
+      }
+    }
+  }
   
   // Fallback to default parsing
   const d = new Date(dateStr);
