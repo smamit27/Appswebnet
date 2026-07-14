@@ -103,11 +103,11 @@ export default function UploadStatementModal({ isOpen, onClose, onUploadComplete
           const withdrawal = parseFloat(withdrawalStr) || 0;
           const deposit = parseFloat(depositStr) || 0;
 
-          // Auto-categorization
+           // Auto-categorization
           let category = '';
           const lowerRemarks = remarks.toLowerCase();
           
-          if (lowerRemarks.includes('ach/indian clearing')) {
+          if (lowerRemarks.includes('ach/indian clearing') || lowerRemarks.includes('indian clearing')) {
             category = 'Angel One Mutual fund investment';
           } else if (lowerRemarks.includes('upi/saddam')) {
             category = 'Car cleaner';
@@ -135,6 +135,12 @@ export default function UploadStatementModal({ isOpen, onClose, onUploadComplete
             category = deposit > 0 ? 'Bank Deposit' : 'Bank Withdrawal';
           }
 
+          let displayName = remarks.substring(0, 45);
+          if (lowerRemarks.includes('indian clearing')) {
+            displayName = displayName.replace(/indian clearing corp/gi, 'Angel one Mutual fund')
+                                     .replace(/indian clearing/gi, 'Angel one Mutual fund');
+          }
+
           const day = match[1].padStart(2, '0');
           const mm = match[2].padStart(2, '0');
           const year = match[3];
@@ -145,10 +151,10 @@ export default function UploadStatementModal({ isOpen, onClose, onUploadComplete
             if (deposit > 0) {
               // Ignore UPI deposits (income) as requested
               if (!lowerRemarks.includes('upi/')) {
-                newInc.push({ date: formattedDate, source: remarks.substring(0, 45), amount: deposit, remark: category });
+                newInc.push({ date: formattedDate, source: displayName, amount: deposit, remark: category });
               }
             } else if (withdrawal > 0) {
-              newExp.push({ date: formattedDate, vendor: remarks.substring(0, 45), amount: withdrawal, purpose: category });
+              newExp.push({ date: formattedDate, vendor: displayName, amount: withdrawal, purpose: category });
             }
           }
         }

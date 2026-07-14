@@ -45,17 +45,14 @@ const INR = '₹';
 const INCOME_CATEGORIES = ['Salary', 'Freelance', 'Investments', 'Dividend', 'Interest', 'Rent Received', 'Business', 'Other Income'];
 const EXPENSE_CATEGORIES = ['Food & Dining', 'Transport', 'Shopping', 'Bills & Utilities', 'Home', 'Home Loan EMI', 'Investments', 'Credit Card Payment', 'House Help', 'Monthly Maintenance', 'Healthcare', 'Entertainment', 'Education', 'Others'];
 const PAYMENT_METHODS = [
-  'HDFC Bank',
-  'Axis Bank',
+  'Amit HDFC Bank',
   'SBI Bank',
-  'ICICI Bank',
-  'Amit GPay',
-  'Sweta GPay',
+  'Amit ICICI Bank',
+  'Sweta ICICI Bank',
   'Pluxee',
   'Amazon Credit Card',
   'HSBC Credit Card',
   'Axis Credit Card',
-  'Credit Card',
   'Cash',
   'Other'
 ];
@@ -82,7 +79,7 @@ const EMPTY_INCOME = () => ({
   amount: '',
   remark: '',
   category: '',
-  creditedTo: 'HDFC Bank',
+  creditedTo: 'Amit HDFC Bank',
   type: 'income'
 });
 
@@ -92,7 +89,7 @@ const EMPTY_EXPENSE = () => ({
   amount: '',
   purpose: '',
   category: '',
-  paymentMode: 'HDFC Bank',
+  paymentMode: 'Amit HDFC Bank',
   refNo: '',
   type: 'expense'
 });
@@ -393,6 +390,21 @@ function BudgetBar({ category, spent, budget }) {
 /* ── Main Component ── */
 export default function FinanceTracker({ person, personLabel, isAuthorized, user, refreshTrigger }) {
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth);
+  const activeTabRef = useRef(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (activeTabRef.current) {
+        activeTabRef.current.scrollIntoView({
+          behavior: 'smooth',
+          inline: 'center',
+          block: 'nearest',
+        });
+      }
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [selectedMonth]);
+
   const [income, setIncome] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -404,6 +416,35 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
   const [formData, setFormData] = useState(EMPTY_INCOME());
   const [formSaving, setFormSaving] = useState(false);
   const [showAllTx, setShowAllTx] = useState(false);
+  const [dateError, setDateError] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState(null); // null | string
+  const [accountFilter, setAccountFilter] = useState('All');
+
+  const { startDate, endDate } = useMemo(() => {
+    const [y, m] = selectedMonth.split('-').map(Number);
+    const startYear = m === 1 ? y - 1 : y;
+    const startMonth = m === 1 ? 12 : m - 1;
+    const startDate = `${startYear}-${String(startMonth).padStart(2, '0')}-25`;
+    const endDate = `${y}-${String(m).padStart(2, '0')}-24`;
+    return { startDate, endDate };
+  }, [selectedMonth]);
+
+  const formatToUIDate = useCallback((dStr) => {
+    if (!dStr) return '';
+    const parts = dStr.split('-');
+    if (parts.length !== 3) return dStr;
+    const [y, m, d] = parts;
+    return `${d}/${m}/${y}`;
+  }, []);
+
+  useEffect(() => {
+    if (formOpen && formData.date) {
+      if (formData.date < startDate || formData.date > endDate) {
+        setFormData(prev => ({ ...prev, date: '' }));
+        setDateError(`Selected date was cleared because it is outside the cycle range (${formatToUIDate(startDate)} to ${formatToUIDate(endDate)}).`);
+      }
+    }
+  }, [startDate, endDate, formOpen, formatToUIDate]);
 
   const [sortField, setSortField] = useState('date'); // 'date' | 'category' | 'amount'
   const [sortDirection, setSortDirection] = useState('desc'); // 'asc' | 'desc'
@@ -435,11 +476,25 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
     setFormOpen(null);
     setEditingIdx(null);
     setFormData(EMPTY_INCOME());
+    setDateError('');
   };
-  const handleFormField = (field, val) => setFormData(f => ({ ...f, [field]: val }));
+  const handleFormField = (field, val) => {
+    if (field === 'date') {
+      if (val && (val < startDate || val > endDate)) {
+        setDateError(`Please select a date between ${formatToUIDate(startDate)} and ${formatToUIDate(endDate)}.`);
+      } else {
+        setDateError('');
+      }
+    }
+    setFormData(f => ({ ...f, [field]: val }));
+  };
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
+    if (formData.date < startDate || formData.date > endDate) {
+      setDateError(`Please select a date between ${formatToUIDate(startDate)} and ${formatToUIDate(endDate)}.`);
+      return;
+    }
     setFormSaving(true);
     await handleSaveTransaction(formOpen, formData);
     setFormSaving(false);
@@ -645,10 +700,15 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
         (tx.source || tx.vendor || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (tx.category || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (tx.date || '').includes(searchTerm);
-      return matchFilter && matchSearch;
+      const matchCategory = !selectedCategory || tx.category === selectedCategory;
+      
+      const txAccount = tx._type === 'income' ? tx.creditedTo : tx.paymentMode;
+      const matchAccount = accountFilter === 'All' || txAccount === accountFilter;
+
+      return matchFilter && matchSearch && matchCategory && matchAccount;
     });
     return filtered;
-  }, [income, expenses, txFilter, searchTerm, sortField, sortDirection]);
+  }, [income, expenses, txFilter, searchTerm, sortField, sortDirection, selectedCategory, accountFilter]);
 
   const displayTx = showAllTx ? allTransactions : allTransactions.slice(0, 7);
 
@@ -664,6 +724,19 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
       .filter(item => item.value > 0) // Prevent Recharts Pie from crashing when values are 0
       .sort((a, b) => b.value - a.value);
   }, [expenses]);
+
+  /* ── Category breakdown (income) ── */
+  const incomeByCategory = useMemo(() => {
+    const map = {};
+    income.forEach(r => {
+      const cat = r.category || 'Other Income';
+      map[cat] = (map[cat] || 0) + toNum(r.amount);
+    });
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .filter(item => item.value > 0)
+      .sort((a, b) => b.value - a.value);
+  }, [income]);
 
   /* ── Last 4 weeks weekly data ── */
   const weeklyData = useMemo(() => {
@@ -704,6 +777,7 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
     'Bills & Utilities': 4000,
     'Healthcare': 3000,
     'Entertainment': 2000,
+    'Investments': 50000,
   };
 
   const budgetData = useMemo(() => {
@@ -743,6 +817,7 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
           {FINANCIAL_YEAR_MONTHS.map(mv => (
             <button
               key={mv}
+              ref={selectedMonth === mv ? activeTabRef : null}
               role="tab"
               aria-selected={selectedMonth === mv}
               className={`ft-month-tab ${selectedMonth === mv ? 'ft-month-tab--active' : ''}`}
@@ -840,10 +915,22 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
                       <label className="ft-label">Date <span className="ft-required">*</span></label>
                       <div className="ft-input-wrap ft-input-wrap--icon">
                         <span className="ft-input-icon">📅</span>
-                        <input type="date" required value={formData.date}
+                        <input
+                          type="date"
+                          required
+                          value={formData.date}
+                          min={startDate}
+                          max={endDate}
                           onChange={e => handleFormField('date', e.target.value)}
-                          className="ft-input" />
+                          className="ft-input"
+                          style={dateError ? { borderColor: 'var(--red, #ef4444)' } : {}}
+                        />
                       </div>
+                      {dateError && (
+                        <span className="ft-field-error" style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: 4, display: 'block' }}>
+                          {dateError}
+                        </span>
+                      )}
                     </div>
                     <div className="ft-field">
                       <label className="ft-label">Category <span className="ft-required">*</span></label>
@@ -1023,7 +1110,41 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
                 onChange={e => setSearchTerm(e.target.value)}
                 className="ft-search-input"
               />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500, whiteSpace: 'nowrap' }}>Account:</span>
+                <select
+                  value={accountFilter}
+                  onChange={e => setAccountFilter(e.target.value)}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: 8,
+                    border: '1px solid #e5e7eb',
+                    fontSize: '0.8rem',
+                    color: '#374151',
+                    outline: 'none',
+                    background: '#fff',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="All">All Accounts</option>
+                  {PAYMENT_METHODS.map(acc => (
+                    <option key={acc} value={acc}>{acc}</option>
+                  ))}
+                </select>
+              </div>
             </div>
+
+            {selectedCategory && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 12px', margin: '0 16px 12px', background: 'rgba(25,108,108,0.08)', borderRadius: 8, fontSize: '0.8rem', color: '#196c6c' }}>
+                <span>Filtering category: <strong>{selectedCategory}</strong></span>
+                <button
+                  onClick={() => setSelectedCategory(null)}
+                  style={{ border: 'none', background: 'none', color: '#196c6c', cursor: 'pointer', fontWeight: 'bold', padding: '0 4px', fontSize: '0.85rem' }}
+                >
+                  ✕ Clear Filter
+                </button>
+              </div>
+            )}
 
             {/* Tx Table */}
             <div className="ft-tx-table-wrap">
@@ -1217,10 +1338,30 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
                       outerRadius={80}
                       dataKey="value"
                       paddingAngle={2}
+                      onClick={(data) => {
+                        if (data && data.name) {
+                          setSelectedCategory(prev => prev === data.name ? null : data.name);
+                        }
+                      }}
+                      style={{ cursor: 'pointer' }}
                     >
-                      {expenseByCategory.map((entry, i) => (
-                        <Cell key={i} fill={CATEGORY_COLORS[entry.name] || `hsl(${i * 40}, 70%, 60%)`} />
-                      ))}
+                      {expenseByCategory.map((entry, i) => {
+                        const isSelected = selectedCategory === entry.name;
+                        const defaultColor = CATEGORY_COLORS[entry.name] || `hsl(${i * 40}, 70%, 60%)`;
+                        return (
+                          <Cell
+                            key={i}
+                            fill={defaultColor}
+                            stroke={isSelected ? '#000' : 'none'}
+                            strokeWidth={isSelected ? 1.5 : 0}
+                            style={{
+                              opacity: selectedCategory && !isSelected ? 0.4 : 1,
+                              transition: 'opacity 0.2s, stroke-width 0.2s',
+                              outline: 'none'
+                            }}
+                          />
+                        );
+                      })}
                     </Pie>
                     <Tooltip formatter={(v) => `${INR}${fmtAmt(v)}`} />
                   </PieChart>
@@ -1229,10 +1370,23 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
                   {expenseByCategory.slice(0, 6).map((item, i) => {
                     const color = CATEGORY_COLORS[item.name] || `hsl(${i * 40}, 70%, 60%)`;
                     const pct = totalExpense > 0 ? ((item.value / totalExpense) * 100).toFixed(1) : 0;
+                    const isSelected = selectedCategory === item.name;
                     return (
-                      <div key={item.name} className="ft-pie-legend-item">
+                      <div
+                        key={item.name}
+                        className={`ft-pie-legend-item ${isSelected ? 'active' : ''}`}
+                        onClick={() => setSelectedCategory(prev => prev === item.name ? null : item.name)}
+                        style={{
+                          cursor: 'pointer',
+                          opacity: selectedCategory && !isSelected ? 0.5 : 1,
+                          background: isSelected ? 'rgba(0,0,0,0.03)' : 'transparent',
+                          padding: '4px 6px',
+                          borderRadius: 6,
+                          transition: 'opacity 0.2s, background 0.2s'
+                        }}
+                      >
                         <span className="ft-legend-dot" style={{ background: color }} />
-                        <span className="ft-pie-cat">{item.name}</span>
+                        <span className="ft-pie-cat" style={{ fontWeight: isSelected ? 'bold' : 'normal' }}>{item.name}</span>
                         <span className="ft-pie-val">{INR}{fmtAmt(item.value)}</span>
                         <span className="ft-pie-pct">{pct}%</span>
                       </div>
@@ -1244,6 +1398,88 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
               <div className="ft-empty-state" style={{ padding: '24px 0' }}>
                 <div className="ft-empty-icon">📊</div>
                 <p>No expense data yet</p>
+              </div>
+            )}
+          </div>
+
+          {/* Income by Category Donut */}
+          <div className="ft-card">
+            <div className="ft-card-head">
+              <h3 className="ft-card-title">Income by Category</h3>
+              <span className="ft-card-badge">This Month</span>
+            </div>
+            {incomeByCategory.length > 0 ? (
+              <div className="ft-pie-body">
+                <div style={{ width: 180, height: 180, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <PieChart width={180} height={180}>
+                    <Pie
+                      data={incomeByCategory}
+                      cx={90}
+                      cy={90}
+                      innerRadius={50}
+                      outerRadius={80}
+                      dataKey="value"
+                      paddingAngle={2}
+                      onClick={(data) => {
+                        if (data && data.name) {
+                          setSelectedCategory(prev => prev === data.name ? null : data.name);
+                        }
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {incomeByCategory.map((entry, i) => {
+                        const isSelected = selectedCategory === entry.name;
+                        const defaultColor = CATEGORY_COLORS[entry.name] || `hsl(${120 + i * 40}, 75%, 45%)`;
+                        return (
+                          <Cell
+                            key={i}
+                            fill={defaultColor}
+                            stroke={isSelected ? '#000' : 'none'}
+                            strokeWidth={isSelected ? 1.5 : 0}
+                            style={{
+                              opacity: selectedCategory && !isSelected ? 0.4 : 1,
+                              transition: 'opacity 0.2s, stroke-width 0.2s',
+                              outline: 'none'
+                            }}
+                          />
+                        );
+                      })}
+                    </Pie>
+                    <Tooltip formatter={(v) => `${INR}${fmtAmt(v)}`} />
+                  </PieChart>
+                </div>
+                <div className="ft-pie-legend">
+                  {incomeByCategory.slice(0, 6).map((item, i) => {
+                    const color = CATEGORY_COLORS[item.name] || `hsl(${120 + i * 40}, 75%, 45%)`;
+                    const pct = totalIncome > 0 ? ((item.value / totalIncome) * 100).toFixed(1) : 0;
+                    const isSelected = selectedCategory === item.name;
+                    return (
+                      <div
+                        key={item.name}
+                        className={`ft-pie-legend-item ${isSelected ? 'active' : ''}`}
+                        onClick={() => setSelectedCategory(prev => prev === item.name ? null : item.name)}
+                        style={{
+                          cursor: 'pointer',
+                          opacity: selectedCategory && !isSelected ? 0.5 : 1,
+                          background: isSelected ? 'rgba(0,0,0,0.03)' : 'transparent',
+                          padding: '4px 6px',
+                          borderRadius: 6,
+                          transition: 'opacity 0.2s, background 0.2s'
+                        }}
+                      >
+                        <span className="ft-legend-dot" style={{ background: color }} />
+                        <span className="ft-pie-cat" style={{ fontWeight: isSelected ? 'bold' : 'normal' }}>{item.name}</span>
+                        <span className="ft-pie-val">{INR}{fmtAmt(item.value)}</span>
+                        <span className="ft-pie-pct">{pct}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="ft-empty-state" style={{ padding: '24px 0' }}>
+                <div className="ft-empty-icon">📊</div>
+                <p>No income data yet</p>
               </div>
             )}
           </div>
@@ -1292,9 +1528,26 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
               <span className="ft-card-badge">This Month</span>
             </div>
             <div className="ft-budget-list">
-              {budgetData.map(b => (
-                <BudgetBar key={b.category} {...b} />
-              ))}
+              {budgetData.map(b => {
+                const isSelected = selectedCategory === b.category;
+                return (
+                  <div
+                    key={b.category}
+                    onClick={() => setSelectedCategory(prev => prev === b.category ? null : b.category)}
+                    style={{
+                      cursor: 'pointer',
+                      opacity: selectedCategory && !isSelected ? 0.5 : 1,
+                      transition: 'opacity 0.2s',
+                      borderRadius: 8,
+                      background: isSelected ? 'rgba(0,0,0,0.03)' : 'transparent',
+                      padding: '4px 6px',
+                      margin: '0 -6px'
+                    }}
+                  >
+                    <BudgetBar {...b} />
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
