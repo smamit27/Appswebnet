@@ -7,9 +7,11 @@ import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend
 } from 'recharts';
+import { Mic } from 'lucide-react';
 import '../../finance.css';
 import ConfirmDeleteModal from '../molecules/ConfirmDeleteModal.jsx';
 import ToastNotification from '../molecules/ToastNotification.jsx';
+import VoiceTransactionModal from './VoiceTransactionModal.jsx';
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
 const FINANCIAL_YEAR_MONTHS = Array.from({ length: 12 }, (_, i) => {
@@ -42,9 +44,9 @@ const fmtAmtDec = (v) => Number(v).toLocaleString('en-IN', { minimumFractionDigi
 
 const INR = '₹';
 
-const INCOME_CATEGORIES = ['Salary', 'Freelance', 'Investments', 'Dividend', 'Interest', 'Rent Received', 'Business', 'Other Income'];
-const EXPENSE_CATEGORIES = ['Food & Dining', 'Transport', 'Shopping', 'Bills & Utilities', 'Home', 'Home Loan EMI', 'Investments', 'Credit Card Payment', 'House Help', 'Monthly Maintenance', 'Healthcare', 'Entertainment', 'Education', 'Others'];
-const PAYMENT_METHODS = [
+export const INCOME_CATEGORIES = ['Salary', 'Freelance', 'Investments', 'Dividend', 'Interest', 'Rent Received', 'Business', 'Other Income'];
+export const EXPENSE_CATEGORIES = ['Food & Dining', 'Transport', 'Shopping', 'Bills & Utilities', 'Home', 'Home Loan EMI', 'Investments', 'Credit Card Payment', 'House Help', 'Monthly Maintenance', 'Healthcare', 'Entertainment', 'Education', 'Others'];
+export const PAYMENT_METHODS = [
   'Amit HDFC Bank',
   'SBI Bank',
   'Amit ICICI Bank',
@@ -412,6 +414,7 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
   const [searchTerm, setSearchTerm] = useState('');
   const [txFilter, setTxFilter] = useState('All'); // 'All' | 'Income' | 'Expense'
   const [formOpen, setFormOpen] = useState(null); // null | 'income' | 'expense'
+  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
   const [editingIdx, setEditingIdx] = useState(null); // null | number
   const [formData, setFormData] = useState(EMPTY_INCOME());
   const [formSaving, setFormSaving] = useState(false);
@@ -507,41 +510,47 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
   const recordId = `${person}_${selectedMonth}`;
 
   /* ── Load ── */
-  useEffect(() => {
-    let cancelled = false;
+  const load = useCallback(async () => {
+    setIsLoading(true);
     isLoadedRef.current = false;
-    setSaveStatus('idle');
-
-    async function load() {
-      setIsLoading(true);
-      if (!isFirebaseConfigured || !db) {
-        setIsLoading(false);
-        isLoadedRef.current = true;
+    if (!isFirebaseConfigured || !db) {
+      setIsLoading(false);
+      isLoadedRef.current = true;
+      setIncome([]);
+      setExpenses([]);
+      return;
+    }
+    try {
+      const snap = await getDoc(doc(db, collectionId, recordId));
+      if (snap.exists()) {
+        const data = snap.data();
+        setIncome(data.income || []);
+        setExpenses(data.expenses || []);
+      } else {
         setIncome([]);
         setExpenses([]);
-        return;
       }
-      try {
-        const snap = await getDoc(doc(db, collectionId, recordId));
-        if (!cancelled) {
-          if (snap.exists()) {
-            const data = snap.data();
-            setIncome(data.income || []);
-            setExpenses(data.expenses || []);
-          } else {
-            setIncome([]);
-            setExpenses([]);
-          }
-        }
-      } catch (err) {
-        console.error('Finance load error:', err);
-      } finally {
-        if (!cancelled) { setIsLoading(false); isLoadedRef.current = true; }
-      }
+    } catch (err) {
+      console.error('Finance load error:', err);
+    } finally {
+      setIsLoading(false);
+      isLoadedRef.current = true;
     }
+  }, [collectionId, recordId]);
+
+  useEffect(() => {
     load();
-    return () => { cancelled = true; };
-  }, [recordId, collectionId, selectedMonth, refreshTrigger]);
+  }, [load, refreshTrigger]);
+
+  useEffect(() => {
+    const handleRemoteRefresh = () => {
+      load();
+    };
+    window.addEventListener('finance-transaction-saved', handleRemoteRefresh);
+    return () => {
+      window.removeEventListener('finance-transaction-saved', handleRemoteRefresh);
+    };
+  }, [load]);
 
   /* ── Save ── */
   const saveToFirestore = useCallback(async (inc, exp) => {
@@ -833,6 +842,12 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
           {saveStatus === 'error' && <span className="ft-save-badge ft-save-badge--error">✗ Error</span>}
           {isAuthorized && (
             <>
+              <button
+                className="ft-voice-add-btn"
+                onClick={() => setVoiceModalOpen(true)}
+              >
+                <Mic size={16} /> Voice
+              </button>
               <button
                 className="ft-add-income-btn"
                 onClick={() => openForm('income')}
@@ -1564,6 +1579,15 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
         type={toast.type}
         onClose={() => setToast({ message: '', type: 'success' })}
       />
+
+      {voiceModalOpen && (
+        <VoiceTransactionModal
+          isOpen={voiceModalOpen}
+          onClose={() => setVoiceModalOpen(false)}
+          onSave={handleSaveTransaction}
+          showToast={showToast}
+        />
+      )}
     </div>
   );
 }

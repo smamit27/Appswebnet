@@ -1,8 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles } from 'lucide-react';
+import { Send, Sparkles, Mic, MicOff } from 'lucide-react';
 import { generateContextForQuery, getTabMetrics } from '../../services/ragService';
-import { askGemini } from '../../services/geminiService';
+import { askGemini, parseTransactionWithAI, transcribeAudioWithAI } from '../../services/geminiService';
 import ChatMessage from './ChatMessage';
+import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
+import { useAuth } from '../../hooks/useAuth';
+import { db } from '../../firebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 const CHAT_TABS = [
   { id: 'general', label: '🏠 General', title: 'Dashboard Overview' },
@@ -41,6 +45,7 @@ const SUGGESTIONS = {
 };
 
 export default function AIChatWindow({ isOpen, onClose }) {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('general');
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([
@@ -51,6 +56,54 @@ export default function AIChatWindow({ isOpen, onClose }) {
   const messagesEndRef = useRef(null);
   
   const suggestions = SUGGESTIONS[activeTab] || [];
+
+  const {
+    isSupported,
+    isRecording,
+    transcript,
+    error: speechError,
+    isFallbackActive,
+    audioBase64,
+    mimeType,
+    startRecording,
+    stopRecording,
+    setTranscript
+  } = useSpeechRecognition();
+
+  // Reset speech states on window open/close
+  useEffect(() => {
+    if (!isOpen) {
+      stopRecording();
+      setTranscript('');
+    }
+  }, [isOpen]);
+
+  // Handle native Web Speech API real-time input
+  useEffect(() => {
+    if (isRecording && transcript) {
+      setInput(transcript);
+    }
+  }, [transcript, isRecording]);
+
+  // Handle fallback audio transcription via Gemini
+  useEffect(() => {
+    async function transcribe() {
+      if (isFallbackActive && !isRecording && audioBase64) {
+        setIsTyping(true);
+        try {
+          const text = await transcribeAudioWithAI(audioBase64, mimeType);
+          if (text) {
+            setInput(text);
+          }
+        } catch (err) {
+          console.error("Fallback audio transcription failed:", err);
+        } finally {
+          setIsTyping(false);
+        }
+      }
+    }
+    transcribe();
+  }, [audioBase64, isRecording, isFallbackActive, mimeType]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -70,12 +123,106 @@ export default function AIChatWindow({ isOpen, onClose }) {
     loadMetrics();
   }, [activeTab, isOpen]);
 
+  const saveTransactionDirectly = async (parsed) => {
+    if (!db || !user) throw new Error('Database or user authentication is not available.');
+    
+    const [y, m, d] = parsed.date.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    if (dateObj.getDate() >= 25) {
+      dateObj.setMonth(dateObj.getMonth() + 1);
+    }
+    const cycleMonth = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
+    
+    const collectionId = 'financeMonthly_family';
+    const recordId = `family_${cycleMonth}`;
+    const docRef = doc(db, collectionId, recordId);
+    
+    const snap = await getDoc(docRef);
+    let incomeList = [];
+    let expenseList = [];
+    
+    if (snap.exists()) {
+      const data = snap.data();
+      incomeList = data.income || [];
+      expenseList = data.expenses || [];
+    }
+    
+    const type = parsed.transactionType === 'income' ? 'income' : 'expense';
+    const rowData = {
+      date: parsed.date,
+      amount: parsed.amount,
+      category: parsed.category,
+      type,
+    };
+    
+    if (type === 'income') {
+      rowData.source = parsed.entity || '';
+      rowData.remark = parsed.details || '';
+      rowData.creditedTo = parsed.paymentMethod || 'Amit HDFC Bank';
+      incomeList.push(rowData);
+    } else {
+      rowData.vendor = parsed.entity || '';
+      rowData.purpose = parsed.details || '';
+      rowData.paymentMode = parsed.paymentMethod || 'Amit HDFC Bank';
+      rowData.refNo = '';
+      expenseList.push(rowData);
+    }
+    
+    await setDoc(docRef, {
+      person: 'family',
+      month: cycleMonth,
+      income: incomeList,
+      expenses: expenseList,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    
+    window.dispatchEvent(new CustomEvent('finance-transaction-saved'));
+  };
+
   const handleSend = async (text) => {
     if (!text.trim() || isTyping) return;
     
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: text }]);
     setIsTyping(true);
+
+    if (isRecording) {
+      stopRecording();
+    }
+
+    // Intercept transaction queries
+    const looksLikeTransaction = /(spent|spent\b|received|salary|income|expense|rupees|rs\.|rs\b|earned|paid|bought|purchase|starbucks|amazon|hdfc|sbi|pluxee|cash|credit card)/i.test(text);
+    if (looksLikeTransaction) {
+      try {
+        const parsed = await parseTransactionWithAI(text, false);
+        if (parsed && parsed.amount && parsed.category) {
+          await saveTransactionDirectly(parsed);
+          
+          const typeLabel = parsed.transactionType === 'income' ? 'Income' : 'Expense';
+          const entityLabel = parsed.transactionType === 'income' ? 'Source' : 'Vendor';
+          const methodLabel = parsed.transactionType === 'income' ? 'Credited To' : 'Payment Method';
+          const detailLabel = parsed.transactionType === 'income' ? 'Remark' : 'Purpose';
+          
+          const successMsg = `✅ **Transaction Saved Automatically!**
+
+* **Type**: ${typeLabel}
+* **Amount**: ₹${parsed.amount}
+* **${entityLabel}**: ${parsed.entity || '—'}
+* **Category**: ${parsed.category}
+* **${methodLabel}**: ${parsed.paymentMethod || 'Amit HDFC Bank'}
+* **${detailLabel}**: ${parsed.details || '—'}
+* **Date**: ${parsed.date}
+
+Saved to your finance dashboard successfully.`;
+
+          setMessages(prev => [...prev, { role: 'assistant', content: successMsg }]);
+          setIsTyping(false);
+          return;
+        }
+      } catch (err) {
+        console.warn("Spoken/text input did not parse as a transaction, falling back to general query...", err);
+      }
+    }
 
     try {
       // Step 1: Generate RAG Context from Firestore
@@ -193,11 +340,32 @@ export default function AIChatWindow({ isOpen, onClose }) {
         <form onSubmit={handleSubmit} className="ai-chat-input-wrapper">
           <input
             type="text"
-            placeholder="Type your question..."
+            placeholder={isRecording ? "Listening..." : "Type your question..."}
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            disabled={isRecording}
           />
-          <button type="submit" disabled={!input.trim()} aria-label="Send message">
+          <button
+            type="button"
+            className={`ai-chat-mic-btn ${isRecording ? 'ai-chat-mic-btn--active' : ''}`}
+            onClick={isRecording ? stopRecording : startRecording}
+            title={isRecording ? "Stop recording" : "Record voice"}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: isRecording ? '#8b5cf6' : '#9ca3af',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 8px',
+              transition: 'all 0.2s ease',
+              transform: isRecording ? 'scale(1.1)' : 'scale(1)'
+            }}
+          >
+            {isRecording ? <MicOff size={18} style={{ color: '#ef4444' }} /> : <Mic size={18} />}
+          </button>
+          <button type="submit" disabled={!input.trim() || isRecording} aria-label="Send message">
             <Send size={16} />
           </button>
         </form>
