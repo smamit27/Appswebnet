@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../../firebase.js';
-import { parseLocalDate } from './PurchasesTracker.jsx';
 import { useCollection } from '../../hooks/useCollection.js';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -14,6 +13,48 @@ import ToastNotification from '../molecules/ToastNotification.jsx';
 import VoiceTransactionModal from './VoiceTransactionModal.jsx';
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
+export function parseLocalDate(dateStr) {
+  if (!dateStr) return new Date();
+  
+  // Format 1: YYYY-MM-DD (e.g. 2026-06-27)
+  if (dateStr.includes('-') && dateStr.split('-')[0].length === 4) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  
+  // Format 2: DD-MMM-YYYY (e.g. 27-Jun-2026)
+  if (dateStr.includes('-')) {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const day = Number(parts[0]);
+      const year = Number(parts[2]);
+      const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+      const monthStr = parts[1].toLowerCase().substring(0, 3);
+      const monthIdx = months.indexOf(monthStr);
+      if (monthIdx !== -1 && !isNaN(day) && !isNaN(year)) {
+        return new Date(year, monthIdx, day);
+      }
+    }
+  }
+
+  // Format 3: DD/MM/YYYY or DD/MM/YY (e.g. 12/06/2026)
+  if (dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      const day = Number(parts[0]);
+      const month = Number(parts[1]);
+      let year = Number(parts[2]);
+      if (year < 100) year += 2000;
+      if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+        return new Date(year, month - 1, day);
+      }
+    }
+  }
+  
+  // Fallback to default parsing
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? new Date() : d;
+}
 const FINANCIAL_YEAR_MONTHS = Array.from({ length: 12 }, (_, i) => {
   const d = new Date(new Date().getFullYear(), new Date().getMonth() - 5 + i, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -1093,185 +1134,218 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
         </div>
       </div>
 
+      {/* ── Top Row (Transactions & Budget aligned with same height) ── */}
+      <div className="ft-top-grid">
+        {/* Recent Transactions */}
+        <div className="ft-card" style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="ft-card-head">
+            <h3 className="ft-card-title">Recent Transactions</h3>
+            <div className="ft-tx-filter-tabs">
+              {['All', 'Income', 'Expense'].map(f => (
+                <button
+                  key={f}
+                  className={`ft-filter-tab ${txFilter === f ? 'ft-filter-tab--active' : ''}`}
+                  onClick={() => setTxFilter(f)}
+                >{f}</button>
+              ))}
+            </div>
+            <button className="ft-view-all" onClick={() => setShowAllTx(v => !v)}>
+              {showAllTx ? 'Show Less' : 'View All ›'}
+            </button>
+          </div>
+
+          {/* Search */}
+          <div className="ft-search-wrap">
+            <span className="ft-search-icon">🔍</span>
+            <input
+              type="search"
+              placeholder="Search transactions…"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="ft-search-input"
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500, whiteSpace: 'nowrap' }}>Account:</span>
+              <select
+                value={accountFilter}
+                onChange={e => setAccountFilter(e.target.value)}
+                style={{
+                  padding: '4px 8px',
+                  borderRadius: 8,
+                  border: '1px solid #e5e7eb',
+                  fontSize: '0.8rem',
+                  color: '#374151',
+                  outline: 'none',
+                  background: '#fff',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="All">All Accounts</option>
+                {PAYMENT_METHODS.map(acc => (
+                  <option key={acc} value={acc}>{acc}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {selectedCategory && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 12px', margin: '0 16px 12px', background: 'rgba(25,108,108,0.08)', borderRadius: 8, fontSize: '0.8rem', color: '#196c6c' }}>
+              <span>Filtering category: <strong>{selectedCategory}</strong></span>
+              <button
+                onClick={() => setSelectedCategory(null)}
+                style={{ border: 'none', background: 'none', color: '#196c6c', cursor: 'pointer', fontWeight: 'bold', padding: '0 4px', fontSize: '0.85rem' }}
+              >
+                ✕ Clear Filter
+              </button>
+            </div>
+          )}
+
+          {/* Tx Table */}
+          <div className="ft-tx-table-wrap" style={{ flex: 1 }}>
+            {allTransactions.length === 0 && !isLoading ? (
+              <div className="ft-empty-state">
+                <div className="ft-empty-icon">📋</div>
+                <p>No transactions yet for {formatMonthDisplay(selectedMonth)}</p>
+                {isAuthorized && (
+                  <button className="ft-add-btn-sm" onClick={() => openForm('income')}>
+                    ＋ Add your first transaction
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                <table className="ft-tx-table">
+                  <thead>
+                    <tr>
+                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('date')}>
+                        Date {sortField === 'date' && (sortDirection === 'asc' ? ' ▲' : ' ▼')}
+                      </th>
+                      <th>Description</th>
+                      <th className="ft-tx-cat-col" style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('category')}>
+                        Category {sortField === 'category' && (sortDirection === 'asc' ? ' ▲' : ' ▼')}
+                      </th>
+                      <th>Account</th>
+                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('amount')}>
+                        Amount {sortField === 'amount' && (sortDirection === 'asc' ? ' ▲' : ' ▼')}
+                      </th>
+                      {isAuthorized && <th style={{ width: 80, textAlign: 'right' }}>Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayTx.map(tx => {
+                      const isIncome = tx._type === 'income';
+                      const name = isIncome ? (tx.source || '—') : (tx.vendor || '—');
+                      const sub = isIncome ? tx.remark : tx.purpose;
+                      const account = isIncome ? tx.creditedTo : tx.paymentMode;
+                      const amount = toNum(tx.amount);
+                      const cat = tx.category || (isIncome ? 'Income' : 'Expense');
+                      const dateStr = tx.date ? parseLocalDate(tx.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+                      return (
+                        <tr key={tx._key} className="ft-tx-row">
+                          <td className="ft-tx-date">{dateStr}</td>
+                          <td>
+                            <div className="ft-tx-name-wrap">
+                              <span className="ft-tx-cat-icon">{CATEGORY_ICONS[cat] || '💳'}</span>
+                              <div>
+                                <div className="ft-tx-name">{name}</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                                  <span className="ft-tx-mobile-cat" style={{ background: (CATEGORY_COLORS[cat] || '#6b7280') + '22', color: CATEGORY_COLORS[cat] || '#6b7280' }}>
+                                    {cat}
+                                  </span>
+                                  {sub && <span className="ft-tx-sub" style={{ marginTop: 0 }}>{sub}</span>}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="ft-tx-cat-col">
+                            <span className="ft-tx-cat-pill" style={{ background: (CATEGORY_COLORS[cat] || '#6b7280') + '22', color: CATEGORY_COLORS[cat] || '#6b7280' }}>
+                              {cat}
+                            </span>
+                          </td>
+                          <td className="ft-tx-account">
+                            {account ? (
+                              <span className="ft-tx-account-chip">
+                                🏦 {account}
+                              </span>
+                            ) : '—'}
+                          </td>
+
+                          <td style={{ textAlign: 'right' }}>
+                            <span className={`ft-tx-amount ${isIncome ? 'ft-tx-amount--income' : 'ft-tx-amount--expense'}`}>
+                              {isIncome ? '+' : '-'}{INR}{fmtAmt(amount)}
+                            </span>
+                          </td>
+                          {isAuthorized && (
+                            <td>
+                              <div className="ft-tx-actions">
+                                <button
+                                  className="ft-tx-action-btn ft-tx-action-btn--edit"
+                                  onClick={() => openForm(tx._type, tx._idx)}
+                                  title="Edit"
+                                >
+                                  ✏️
+                                </button>
+                                <button
+                                  className="ft-tx-action-btn ft-tx-action-btn--delete"
+                                  onClick={() => initiateDelete(tx._type, tx._idx)}
+                                  title="Remove"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {allTransactions.length > 7 && !showAllTx && (
+                  <button className="ft-load-more" onClick={() => setShowAllTx(true)} style={{ marginTop: 'auto' }}>
+                    Show {allTransactions.length - 7} more transactions
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Budget Overview */}
+        <div className="ft-card" style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="ft-card-head">
+            <h3 className="ft-card-title">Budget Overview</h3>
+            <span className="ft-card-badge">This Month</span>
+          </div>
+          <div className="ft-budget-list" style={{ flex: 1 }}>
+            {budgetData.map(b => {
+              const isSelected = selectedCategory === b.category;
+              return (
+                <div
+                  key={b.category}
+                  onClick={() => setSelectedCategory(prev => prev === b.category ? null : b.category)}
+                  style={{
+                    cursor: 'pointer',
+                    opacity: selectedCategory && !isSelected ? 0.5 : 1,
+                    transition: 'opacity 0.2s',
+                    borderRadius: 8,
+                    background: isSelected ? 'rgba(0,0,0,0.03)' : 'transparent',
+                    padding: '4px 6px',
+                    margin: '0 -6px'
+                  }}
+                >
+                  <BudgetBar {...b} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       {/* ── Main 2-Col Layout ── */}
       <div className="ft-main-grid">
         {/* Left: Transactions */}
         <div className="ft-left-col">
-          {/* Recent Transactions */}
-          <div className="ft-card">
-            <div className="ft-card-head">
-              <h3 className="ft-card-title">Recent Transactions</h3>
-              <div className="ft-tx-filter-tabs">
-                {['All', 'Income', 'Expense'].map(f => (
-                  <button
-                    key={f}
-                    className={`ft-filter-tab ${txFilter === f ? 'ft-filter-tab--active' : ''}`}
-                    onClick={() => setTxFilter(f)}
-                  >{f}</button>
-                ))}
-              </div>
-              <button className="ft-view-all" onClick={() => setShowAllTx(v => !v)}>
-                {showAllTx ? 'Show Less' : 'View All ›'}
-              </button>
-            </div>
-
-            {/* Search */}
-            <div className="ft-search-wrap">
-              <span className="ft-search-icon">🔍</span>
-              <input
-                type="search"
-                placeholder="Search transactions…"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="ft-search-input"
-              />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500, whiteSpace: 'nowrap' }}>Account:</span>
-                <select
-                  value={accountFilter}
-                  onChange={e => setAccountFilter(e.target.value)}
-                  style={{
-                    padding: '4px 8px',
-                    borderRadius: 8,
-                    border: '1px solid #e5e7eb',
-                    fontSize: '0.8rem',
-                    color: '#374151',
-                    outline: 'none',
-                    background: '#fff',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <option value="All">All Accounts</option>
-                  {PAYMENT_METHODS.map(acc => (
-                    <option key={acc} value={acc}>{acc}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {selectedCategory && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 12px', margin: '0 16px 12px', background: 'rgba(25,108,108,0.08)', borderRadius: 8, fontSize: '0.8rem', color: '#196c6c' }}>
-                <span>Filtering category: <strong>{selectedCategory}</strong></span>
-                <button
-                  onClick={() => setSelectedCategory(null)}
-                  style={{ border: 'none', background: 'none', color: '#196c6c', cursor: 'pointer', fontWeight: 'bold', padding: '0 4px', fontSize: '0.85rem' }}
-                >
-                  ✕ Clear Filter
-                </button>
-              </div>
-            )}
-
-            {/* Tx Table */}
-            <div className="ft-tx-table-wrap">
-              {allTransactions.length === 0 && !isLoading ? (
-                <div className="ft-empty-state">
-                  <div className="ft-empty-icon">📋</div>
-                  <p>No transactions yet for {formatMonthDisplay(selectedMonth)}</p>
-                  {isAuthorized && (
-                    <button className="ft-add-btn-sm" onClick={() => openForm('income')}>
-                      ＋ Add your first transaction
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <table className="ft-tx-table">
-                    <thead>
-                      <tr>
-                        <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('date')}>
-                          Date {sortField === 'date' && (sortDirection === 'asc' ? ' ▲' : ' ▼')}
-                        </th>
-                        <th>Description</th>
-                        <th className="ft-tx-cat-col" style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('category')}>
-                          Category {sortField === 'category' && (sortDirection === 'asc' ? ' ▲' : ' ▼')}
-                        </th>
-                        <th>Account</th>
-                        <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('amount')}>
-                          Amount {sortField === 'amount' && (sortDirection === 'asc' ? ' ▲' : ' ▼')}
-                        </th>
-                        {isAuthorized && <th style={{ width: 80, textAlign: 'right' }}>Actions</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayTx.map(tx => {
-                        const isIncome = tx._type === 'income';
-                        const name = isIncome ? (tx.source || '—') : (tx.vendor || '—');
-                        const sub = isIncome ? tx.remark : tx.purpose;
-                        const account = isIncome ? tx.creditedTo : tx.paymentMode;
-                        const amount = toNum(tx.amount);
-                        const cat = tx.category || (isIncome ? 'Income' : 'Expense');
-                        const dateStr = tx.date ? parseLocalDate(tx.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-
-                        return (
-                          <tr key={tx._key} className="ft-tx-row">
-                            <td className="ft-tx-date">{dateStr}</td>
-                            <td>
-                              <div className="ft-tx-name-wrap">
-                                <span className="ft-tx-cat-icon">{CATEGORY_ICONS[cat] || '💳'}</span>
-                                <div>
-                                  <div className="ft-tx-name">{name}</div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
-                                    <span className="ft-tx-mobile-cat" style={{ background: (CATEGORY_COLORS[cat] || '#6b7280') + '22', color: CATEGORY_COLORS[cat] || '#6b7280' }}>
-                                      {cat}
-                                    </span>
-                                    {sub && <span className="ft-tx-sub" style={{ marginTop: 0 }}>{sub}</span>}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="ft-tx-cat-col">
-                              <span className="ft-tx-cat-pill" style={{ background: (CATEGORY_COLORS[cat] || '#6b7280') + '22', color: CATEGORY_COLORS[cat] || '#6b7280' }}>
-                                {cat}
-                              </span>
-                            </td>
-                            <td className="ft-tx-account">
-                              {account ? (
-                                <span className="ft-tx-account-chip">
-                                  🏦 {account}
-                                </span>
-                              ) : '—'}
-                            </td>
-
-                            <td style={{ textAlign: 'right' }}>
-                              <span className={`ft-tx-amount ${isIncome ? 'ft-tx-amount--income' : 'ft-tx-amount--expense'}`}>
-                                {isIncome ? '+' : '-'}{INR}{fmtAmt(amount)}
-                              </span>
-                            </td>
-                            {isAuthorized && (
-                              <td>
-                                <div className="ft-tx-actions">
-                                  <button
-                                    className="ft-tx-action-btn ft-tx-action-btn--edit"
-                                    onClick={() => openForm(tx._type, tx._idx)}
-                                    title="Edit"
-                                  >
-                                    ✏️
-                                  </button>
-                                  <button
-                                    className="ft-tx-action-btn ft-tx-action-btn--delete"
-                                    onClick={() => initiateDelete(tx._type, tx._idx)}
-                                    title="Remove"
-                                  >
-                                    🗑️
-                                  </button>
-                                </div>
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {allTransactions.length > 7 && !showAllTx && (
-                    <button className="ft-load-more" onClick={() => setShowAllTx(true)}>
-                      Show {allTransactions.length - 7} more transactions
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-
           {/* Bottom Stats Row */}
           <div className="ft-stats-row">
             {/* Cash Flow Donut */}
@@ -1533,36 +1607,6 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
                   <div className="ft-metric-change positive">↑ this month</div>
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* Budget Overview */}
-          <div className="ft-card">
-            <div className="ft-card-head">
-              <h3 className="ft-card-title">Budget Overview</h3>
-              <span className="ft-card-badge">This Month</span>
-            </div>
-            <div className="ft-budget-list">
-              {budgetData.map(b => {
-                const isSelected = selectedCategory === b.category;
-                return (
-                  <div
-                    key={b.category}
-                    onClick={() => setSelectedCategory(prev => prev === b.category ? null : b.category)}
-                    style={{
-                      cursor: 'pointer',
-                      opacity: selectedCategory && !isSelected ? 0.5 : 1,
-                      transition: 'opacity 0.2s',
-                      borderRadius: 8,
-                      background: isSelected ? 'rgba(0,0,0,0.03)' : 'transparent',
-                      padding: '4px 6px',
-                      margin: '0 -6px'
-                    }}
-                  >
-                    <BudgetBar {...b} />
-                  </div>
-                );
-              })}
             </div>
           </div>
         </div>

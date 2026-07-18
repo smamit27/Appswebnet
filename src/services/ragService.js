@@ -398,17 +398,6 @@ export async function getTabMetrics(tabId) {
       ];
     }
 
-    if (tabId === 'purchases') {
-      const snap = await getDocs(collection(db, 'purchases'));
-      const orders = snap.docs.map(d => d.data());
-      const totalSpend = orders.reduce((s, o) => s + (parseFloat(o.totalAmount) || 0), 0);
-      
-      return [
-        { label: 'Total Orders', value: orders.length, accent: '#6366f1' },
-        { label: 'Total Shopping', value: `₹${totalSpend.toLocaleString('en-IN')}`, accent: '#10b981' },
-        { label: 'Recent Shop', value: orders[0]?.seller || 'None', accent: '#f59e0b' }
-      ];
-    }
 
     if (tabId === 'family') {
       const eventSnap = await getDocs(collection(db, 'familyEvents'));
@@ -481,7 +470,7 @@ export async function getTabMetrics(tabId) {
 
     // Default general/overview tab metrics
     const financeSnap = await getDocs(collection(db, 'financeMonthly_family'));
-    const orderSnap = await getDocs(collection(db, 'purchases'));
+    const lendingSnap = await getDocs(collection(db, 'lendings'));
     const eventSnap = await getDocs(collection(db, 'familyEvents'));
     
     let savingsStr = '₹0';
@@ -494,9 +483,11 @@ export async function getTabMetrics(tabId) {
       savingsStr = `₹${(inc - exp).toLocaleString('en-IN')}`;
     }
     
+    const receivablesCount = lendingSnap.docs.filter(d => d.data().status === 'Pending').length;
+
     return [
       { label: 'Monthly Savings', value: savingsStr, accent: '#10b981' },
-      { label: 'Shopping Bills', value: orderSnap.size, accent: '#6366f1' },
+      { label: 'Pending Receivables', value: receivablesCount, accent: '#6366f1' },
       { label: 'Calendar Reminders', value: eventSnap.size, accent: '#f59e0b' }
     ];
   } catch (error) {
