@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 
@@ -23,7 +23,21 @@ export const app = isFirebaseConfigured
   ? getApps().length ? getApps()[0] : initializeApp(firebaseConfig)
   : null;
 
-export const db   = app ? getFirestore(app) : null;
+let firestoreDb = null;
+if (app) {
+  try {
+    firestoreDb = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      })
+    });
+  } catch (err) {
+    console.warn("Firestore offline persistence failed, falling back to default:", err);
+    firestoreDb = getFirestore(app);
+  }
+}
+
+export const db   = firestoreDb;
 export const auth = app ? getAuth(app) : null;
 export const googleProvider = new GoogleAuthProvider();
 
