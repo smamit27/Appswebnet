@@ -105,7 +105,7 @@ You must return a structured JSON response containing the following fields:
 3. date: string in "YYYY-MM-DD" format. If no date is mentioned, use the current date (today is ${todayStr}).
 4. category: string. Must match exactly one of these allowed categories:
    - For income: ["Salary", "Freelance", "Investments", "Dividend", "Interest", "Rent Received", "Business", "Other Income"]
-   - For expense: ["Food & Dining", "Transport", "Shopping", "Bills & Utilities", "Home", "Home Loan EMI", "Investments", "Credit Card Payment", "House Help", "Monthly Maintenance", "Healthcare", "Entertainment", "Education", "Others"]
+   - For expense: ["Food & Dining", "Transport", "Shopping", "Bills & Utilities", "Home Loan EMI", "Investments", "Credit Card Payment", "House Help", "Monthly Maintenance", "Healthcare", "Entertainment", "Education", "Others"]
 5. paymentMethod: string. Must match exactly one of these allowed methods (default is "Amit HDFC Bank"):
    ["Amit HDFC Bank", "SBI Bank", "Amit ICICI Bank", "Sweta ICICI Bank", "Pluxee", "Amazon Credit Card", "HSBC Credit Card", "Axis Credit Card", "Cash", "Other"]
 6. entity: string. The source (e.g. employer, person) for income, or vendor (e.g. Starbucks, Amazon, landlord) for expense.

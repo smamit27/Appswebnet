@@ -16,6 +16,7 @@ import PortfolioPage     from './components/organisms/Portfolio/PortfolioPage.js
 import AmishiActivity    from './components/organisms/AmishiActivity.jsx';
 import AmishiFees        from './components/organisms/AmishiFees.jsx';
 import AmishiProfile     from './components/organisms/AmishiProfile.jsx';
+import AmishiSyllabus    from './components/organisms/AmishiSyllabus.jsx';
 import DietPlan          from './components/organisms/DietPlan.jsx';
 import FamilyCalendar    from './components/organisms/FamilyCalendar.jsx';
 import CleaningSchedule  from './components/organisms/CleaningSchedule.jsx';
@@ -132,6 +133,12 @@ const ICONS = {
       <line x1="15" y1="10" x2="15" y2="10" strokeWidth="3" strokeLinecap="round"/>
     </svg>
   ),
+  syllabus: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </svg>
+  ),
 };
 
 /* ── No Mock fallback data ─────────────────────────────────────────── */
@@ -151,6 +158,7 @@ const NAV = [
   ]},
   { group: 'Amishi', items: [
     { id: 'activity', label: 'Daily Activity' },
+    { id: 'syllabus', label: 'Monthly Learning', iconId: 'syllabus' },
     { id: 'fees',     label: 'School Fees' },
     { id: 'profile',  label: 'Q&A Profile', iconId: 'profile' }
   ]},
@@ -372,6 +380,10 @@ export default function App() {
 
             {activeTab === 'profile' && (
               <AmishiProfile user={user} />
+            )}
+
+            {activeTab === 'syllabus' && (
+              <AmishiSyllabus user={user} isAuthorized={isAuthorized} />
             )}
 
             {activeTab === 'fees' && (
