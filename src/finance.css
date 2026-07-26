@@ -2016,10 +2016,123 @@
   .ft-add-income-btn, .ft-add-expense-btn { padding: 8px 12px; font-size: 0.8rem; }
   .ft-inline-form-body { grid-template-columns: 1fr 1fr; }
 }
+
+@media (max-width: 640px) {
+  /* Month strip horizontal scroll */
+  .ft-month-strip {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px;
+  }
+  .ft-month-tabs {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+    width: 100%;
+  }
+  .ft-month-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .ft-month-tab {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .ft-month-actions {
+    width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  /* Metrics Grid on 393px phone */
+  .ft-metrics-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+  .ft-metric-card {
+    padding: 12px 10px !important;
+    border-radius: 14px !important;
+  }
+  .ft-metric-value {
+    font-size: 1.05rem !important;
+    letter-spacing: -0.02em;
+    word-break: break-word;
+  }
+  .ft-metric-label {
+    font-size: 0.72rem !important;
+  }
+  .ft-metric-change {
+    font-size: 0.68rem !important;
+  }
+
+  /* Donut charts & legends vertical stack */
+  .ft-pie-body, .ft-cashflow-body {
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 16px !important;
+  }
+  .ft-pie-legend, .ft-cashflow-legend {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* Feed Container & Items */
+  .ft-feed-container {
+    padding: 10px;
+  }
+  .ft-feed-items-list::before {
+    left: 45px;
+  }
+  .ft-feed-item {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .ft-timeline-time-col {
+    width: 50px;
+    gap: 6px;
+  }
+  .ft-timeline-time {
+    font-size: 0.68rem;
+  }
+  .ft-feed-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+  }
+  .ft-feed-avatar-icon {
+    font-size: 1.1rem;
+  }
+  .ft-feed-title {
+    font-size: 0.84rem;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ft-feed-amount {
+    font-size: 0.88rem;
+  }
+  .ft-feed-cat-chip, .ft-feed-account-chip {
+    font-size: 0.68rem;
+    padding: 2px 6px;
+  }
+
+  /* Mobile dock safe area */
+  .ft-mobile-dock {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 @media (max-width: 480px) {
   .ft-inline-form-body { grid-template-columns: 1fr; }
   .ft-month-actions { gap: 4px; }
   .ft-add-income-btn, .ft-add-expense-btn { padding: 7px 10px; font-size: 0.78rem; }
+  .ft-feed-title { max-width: 90px; }
 }
 
 /* Responsive Table Category Styles */
