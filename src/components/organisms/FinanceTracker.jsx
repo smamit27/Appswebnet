@@ -405,7 +405,7 @@ function AddTransactionModal({ isOpen, onClose, onSave, isAuthorized }) {
 
 /* ── Budget Card ── */
 function BudgetBar({ category, spent, budget }) {
-  const pct = budget > 0 ? Math.min((spent / budget) * 100, 150) : 0;
+  const pct = budget > 0 ? Math.round((spent / budget) * 100) : 0;
   const exceeded = spent > budget;
   const color = exceeded ? '#ef4444' : pct > 80 ? '#f59e0b' : '#10b981';
   return (
@@ -418,7 +418,7 @@ function BudgetBar({ category, spent, budget }) {
             {INR}{fmtAmt(spent)} / {INR}{fmtAmt(budget)}
           </span>
         </div>
-        <span className="ft-budget-pct" style={{ color }}>{exceeded ? 'Budget Exceeded' : `${Math.round(pct)}%`}</span>
+        <span className="ft-budget-pct" style={{ color }}>{pct}%</span>
       </div>
       <div className="ft-budget-bar-bg">
         <div
@@ -463,6 +463,7 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
   const [dateError, setDateError] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null); // null | string
   const [accountFilter, setAccountFilter] = useState('All');
+  const [viewMode, setViewMode] = useState('timeline'); // 'timeline' | 'category'
 
   const { startDate, endDate } = useMemo(() => {
     const [y, m] = selectedMonth.split('-').map(Number);
@@ -762,6 +763,51 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
 
   const displayTx = showAllTx ? allTransactions : allTransactions.slice(0, 7);
 
+  const formatDateGroupHeader = (dStr) => {
+    if (!dStr) return 'Other Transactions';
+    const d = parseLocalDate(dStr);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    if (d.toDateString() === today.toDateString()) return 'Today';
+    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  const groupedTransactions = useMemo(() => {
+    if (viewMode === 'timeline') {
+      const groupsMap = new Map();
+      displayTx.forEach(tx => {
+        const groupKey = tx.date || 'other';
+        const label = formatDateGroupHeader(tx.date);
+        if (!groupsMap.has(groupKey)) {
+          groupsMap.set(groupKey, { key: groupKey, label, items: [], totalInc: 0, totalExp: 0 });
+        }
+        const g = groupsMap.get(groupKey);
+        g.items.push(tx);
+        const amt = toNum(tx.amount);
+        if (tx._type === 'income') g.totalInc += amt;
+        else g.totalExp += amt;
+      });
+      return Array.from(groupsMap.values());
+    } else {
+      const groupsMap = new Map();
+      displayTx.forEach(tx => {
+        const cat = tx.category || (tx._type === 'income' ? 'Income' : 'Expense');
+        if (!groupsMap.has(cat)) {
+          groupsMap.set(cat, { key: cat, label: cat, items: [], totalInc: 0, totalExp: 0 });
+        }
+        const g = groupsMap.get(cat);
+        g.items.push(tx);
+        const amt = toNum(tx.amount);
+        if (tx._type === 'income') g.totalInc += amt;
+        else g.totalExp += amt;
+      });
+      return Array.from(groupsMap.values()).sort((a, b) => (b.totalInc + b.totalExp) - (a.totalInc + a.totalExp));
+    }
+  }, [displayTx, viewMode]);
+
   /* ── Category breakdown (expenses) ── */
   const expenseByCategory = useMemo(() => {
     const map = {};
@@ -913,6 +959,7 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
             className={`ft-popup ${formOpen === 'income' ? 'ft-popup--income' : 'ft-popup--expense'}`}
             onClick={e => e.stopPropagation()}
           >
+            <div className="ft-popup-drag-handle" />
             {/* Popup Header */}
             <div className="ft-popup-head">
               <div className="ft-popup-head-left">
@@ -1081,19 +1128,6 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
 
       {/* ── Metric Cards Row ── */}
       <div className="ft-metrics-grid">
-        {/* Total Balance */}
-        <div className="ft-metric-card ft-metric-card--balance">
-          <div className="ft-metric-icon ft-metric-icon--blue">🏦</div>
-          <div className="ft-metric-body">
-            <span className="ft-metric-label">Total Balance</span>
-            <div className="ft-metric-value">{INR}{fmtAmt(netSavings)}</div>
-            <div className={`ft-metric-change ${netSavings >= 0 ? 'positive' : 'negative'}`}>
-              {netSavings >= 0 ? '↑' : '↓'} Balance this month
-            </div>
-          </div>
-          <Sparkline data={savingsSparkData} color="#3b82f6" />
-        </div>
-
         {/* Total Income */}
         <div className="ft-metric-card ft-metric-card--income">
           <div className="ft-metric-icon ft-metric-icon--green">💰</div>
@@ -1120,296 +1154,277 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
           <Sparkline data={expenseSparkData} color="#ef4444" isPositive={false} />
         </div>
 
-        {/* Total Savings */}
+        {/* Net Savings */}
         <div className="ft-metric-card ft-metric-card--savings">
-          <div className="ft-metric-icon ft-metric-icon--purple">🐷</div>
+          <div className="ft-metric-icon ft-metric-icon--purple">📊</div>
           <div className="ft-metric-body">
-            <span className="ft-metric-label">Total Savings</span>
+            <span className="ft-metric-label">Net Savings</span>
             <div className="ft-metric-value">{INR}{fmtAmt(Math.max(netSavings, 0))}</div>
             <div className={`ft-metric-change ${netSavings >= 0 ? 'positive' : 'negative'}`}>
-              {netSavings >= 0 ? '↑ ' : '↓ '} {totalIncome > 0 ? Math.round((Math.max(netSavings, 0) / totalIncome) * 100) : 0}% of income
+              {netSavings >= 0 ? '↑ ' : '↓ '} {totalIncome > 0 ? Math.round((Math.max(netSavings, 0) / totalIncome) * 100) : 0}% vs last month
             </div>
           </div>
-          <Sparkline data={savingsSparkData} color="#a855f7" />
-        </div>
-      </div>
-
-      {/* ── Top Row (Transactions & Budget aligned with same height) ── */}
-      <div className="ft-top-grid">
-        {/* Recent Transactions */}
-        <div className="ft-card" style={{ display: 'flex', flexDirection: 'column' }}>
-          <div className="ft-card-head">
-            <h3 className="ft-card-title">Recent Transactions</h3>
-            <div className="ft-tx-filter-tabs">
-              {['All', 'Income', 'Expense'].map(f => (
-                <button
-                  key={f}
-                  className={`ft-filter-tab ${txFilter === f ? 'ft-filter-tab--active' : ''}`}
-                  onClick={() => setTxFilter(f)}
-                >{f}</button>
-              ))}
-            </div>
-            <button className="ft-view-all" onClick={() => setShowAllTx(v => !v)}>
-              {showAllTx ? 'Show Less' : 'View All ›'}
-            </button>
-          </div>
-
-          {/* Search */}
-          <div className="ft-search-wrap">
-            <span className="ft-search-icon">🔍</span>
-            <input
-              type="search"
-              placeholder="Search transactions…"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="ft-search-input"
-            />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500, whiteSpace: 'nowrap' }}>Account:</span>
-              <select
-                value={accountFilter}
-                onChange={e => setAccountFilter(e.target.value)}
-                style={{
-                  padding: '4px 8px',
-                  borderRadius: 8,
-                  border: '1px solid #e5e7eb',
-                  fontSize: '0.8rem',
-                  color: '#374151',
-                  outline: 'none',
-                  background: '#fff',
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="All">All Accounts</option>
-                {PAYMENT_METHODS.map(acc => (
-                  <option key={acc} value={acc}>{acc}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {selectedCategory && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 12px', margin: '0 16px 12px', background: 'rgba(25,108,108,0.08)', borderRadius: 8, fontSize: '0.8rem', color: '#196c6c' }}>
-              <span>Filtering category: <strong>{selectedCategory}</strong></span>
-              <button
-                onClick={() => setSelectedCategory(null)}
-                style={{ border: 'none', background: 'none', color: '#196c6c', cursor: 'pointer', fontWeight: 'bold', padding: '0 4px', fontSize: '0.85rem' }}
-              >
-                ✕ Clear Filter
-              </button>
-            </div>
-          )}
-
-          {/* Tx Table */}
-          <div className="ft-tx-table-wrap" style={{ flex: 1 }}>
-            {allTransactions.length === 0 && !isLoading ? (
-              <div className="ft-empty-state">
-                <div className="ft-empty-icon">📋</div>
-                <p>No transactions yet for {formatMonthDisplay(selectedMonth)}</p>
-                {isAuthorized && (
-                  <button className="ft-add-btn-sm" onClick={() => openForm('income')}>
-                    ＋ Add your first transaction
-                  </button>
-                )}
-              </div>
-            ) : (
-              <>
-                <table className="ft-tx-table">
-                  <thead>
-                    <tr>
-                      <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('date')}>
-                        Date {sortField === 'date' && (sortDirection === 'asc' ? ' ▲' : ' ▼')}
-                      </th>
-                      <th>Description</th>
-                      <th className="ft-tx-cat-col" style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('category')}>
-                        Category {sortField === 'category' && (sortDirection === 'asc' ? ' ▲' : ' ▼')}
-                      </th>
-                      <th>Account</th>
-                      <th style={{ textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('amount')}>
-                        Amount {sortField === 'amount' && (sortDirection === 'asc' ? ' ▲' : ' ▼')}
-                      </th>
-                      {isAuthorized && <th style={{ width: 80, textAlign: 'right' }}>Actions</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayTx.map(tx => {
-                      const isIncome = tx._type === 'income';
-                      const name = isIncome ? (tx.source || '—') : (tx.vendor || '—');
-                      const sub = isIncome ? tx.remark : tx.purpose;
-                      const account = isIncome ? tx.creditedTo : tx.paymentMode;
-                      const amount = toNum(tx.amount);
-                      const cat = tx.category || (isIncome ? 'Income' : 'Expense');
-                      const dateStr = tx.date ? parseLocalDate(tx.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
-
-                      return (
-                        <tr key={tx._key} className="ft-tx-row">
-                          <td className="ft-tx-date">{dateStr}</td>
-                          <td>
-                            <div className="ft-tx-name-wrap">
-                              <span className="ft-tx-cat-icon">{CATEGORY_ICONS[cat] || '💳'}</span>
-                              <div>
-                                <div className="ft-tx-name">{name}</div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
-                                  <span className="ft-tx-mobile-cat" style={{ background: (CATEGORY_COLORS[cat] || '#6b7280') + '22', color: CATEGORY_COLORS[cat] || '#6b7280' }}>
-                                    {cat}
-                                  </span>
-                                  {sub && <span className="ft-tx-sub" style={{ marginTop: 0 }}>{sub}</span>}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="ft-tx-cat-col">
-                            <span className="ft-tx-cat-pill" style={{ background: (CATEGORY_COLORS[cat] || '#6b7280') + '22', color: CATEGORY_COLORS[cat] || '#6b7280' }}>
-                              {cat}
-                            </span>
-                          </td>
-                          <td className="ft-tx-account">
-                            {account ? (
-                              <span className="ft-tx-account-chip">
-                                🏦 {account}
-                              </span>
-                            ) : '—'}
-                          </td>
-
-                          <td style={{ textAlign: 'right' }}>
-                            <span className={`ft-tx-amount ${isIncome ? 'ft-tx-amount--income' : 'ft-tx-amount--expense'}`}>
-                              {isIncome ? '+' : '-'}{INR}{fmtAmt(amount)}
-                            </span>
-                          </td>
-                          {isAuthorized && (
-                            <td>
-                              <div className="ft-tx-actions">
-                                <button
-                                  className="ft-tx-action-btn ft-tx-action-btn--edit"
-                                  onClick={() => openForm(tx._type, tx._idx)}
-                                  title="Edit"
-                                >
-                                  ✏️
-                                </button>
-                                <button
-                                  className="ft-tx-action-btn ft-tx-action-btn--delete"
-                                  onClick={() => initiateDelete(tx._type, tx._idx)}
-                                  title="Remove"
-                                >
-                                  🗑️
-                                </button>
-                              </div>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {allTransactions.length > 7 && !showAllTx && (
-                  <button className="ft-load-more" onClick={() => setShowAllTx(true)} style={{ marginTop: 'auto' }}>
-                    Show {allTransactions.length - 7} more transactions
-                  </button>
-                )}
-              </>
-            )}
-          </div>
+          <Sparkline data={savingsSparkData} color="#3b82f6" />
         </div>
 
-        {/* Budget Overview */}
-        <div className="ft-card" style={{ display: 'flex', flexDirection: 'column' }}>
-          <div className="ft-card-head">
-            <h3 className="ft-card-title">Budget Overview</h3>
-            <span className="ft-card-badge">This Month</span>
+        {/* Total Balance */}
+        <div className="ft-metric-card ft-metric-card--balance">
+          <div className="ft-metric-icon ft-metric-icon--blue">💳</div>
+          <div className="ft-metric-body">
+            <span className="ft-metric-label">Total Balance</span>
+            <div className="ft-metric-value">{INR}{fmtAmt(netSavings)}</div>
+            <div className="ft-metric-change positive">
+              in all accounts
+            </div>
           </div>
-          <div className="ft-budget-list" style={{ flex: 1 }}>
-            {budgetData.map(b => {
-              const isSelected = selectedCategory === b.category;
-              return (
-                <div
-                  key={b.category}
-                  onClick={() => setSelectedCategory(prev => prev === b.category ? null : b.category)}
-                  style={{
-                    cursor: 'pointer',
-                    opacity: selectedCategory && !isSelected ? 0.5 : 1,
-                    transition: 'opacity 0.2s',
-                    borderRadius: 8,
-                    background: isSelected ? 'rgba(0,0,0,0.03)' : 'transparent',
-                    padding: '4px 6px',
-                    margin: '0 -6px'
-                  }}
-                >
-                  <BudgetBar {...b} />
-                </div>
-              );
-            })}
-          </div>
+          <Sparkline data={savingsSparkData} color="#f59e0b" />
         </div>
       </div>
 
       {/* ── Main 2-Col Layout ── */}
       <div className="ft-main-grid">
-        {/* Left: Transactions */}
+        {/* Left Column: Transaction Feed */}
         <div className="ft-left-col">
-          {/* Bottom Stats Row */}
-          <div className="ft-stats-row">
-            {/* Cash Flow Donut */}
-            <div className="ft-card ft-card--half">
-              <div className="ft-card-head">
-                <h3 className="ft-card-title">Cash Flow Summary</h3>
-                <span className="ft-card-badge">This Month</span>
-              </div>
-              <div className="ft-cashflow-body">
-                <div style={{ width: 160, height: 160, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <PieChart width={160} height={160}>
-                    <Pie data={[
-                      { name: 'Income', value: totalIncome || 0.01 },
-                      { name: 'Expenses', value: totalExpense || 0.01 },
-                      { name: 'Savings', value: Math.max(netSavings, 0) || 0.01 },
-                    ]} cx={80} cy={80} innerRadius={45} outerRadius={70} dataKey="value" paddingAngle={2}>
-                      <Cell fill="#10b981" />
-                      <Cell fill="#ef4444" />
-                      <Cell fill="#3b82f6" />
-                    </Pie>
-                    <Tooltip formatter={(v) => `${INR}${fmtAmt(v)}`} />
-                  </PieChart>
+          <div className="ft-card" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="ft-card-head" style={{ flexWrap: 'wrap', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <h3 className="ft-card-title">Transaction Feed</h3>
+                <div className="ft-view-switcher">
+                  <button
+                    className={`ft-view-mode-btn ${viewMode === 'timeline' ? 'active' : ''}`}
+                    onClick={() => setViewMode('timeline')}
+                  >
+                    📅 Timeline
+                  </button>
+                  <button
+                    className={`ft-view-mode-btn ${viewMode === 'category' ? 'active' : ''}`}
+                    onClick={() => setViewMode('category')}
+                  >
+                    🏷️ By Category
+                  </button>
                 </div>
-                <div className="ft-cashflow-legend">
-                  {[
-                    { label: 'Total Income', value: totalIncome, color: '#10b981' },
-                    { label: 'Total Expenses', value: totalExpense, color: '#ef4444' },
-                    { label: 'Savings', value: Math.max(netSavings, 0), color: '#3b82f6' },
-                  ].map(item => (
-                    <div key={item.label} className="ft-legend-item">
-                      <span className="ft-legend-dot" style={{ background: item.color }} />
-                      <div>
-                        <div className="ft-legend-label">{item.label}</div>
-                        <div className="ft-legend-val">{INR}{fmtAmt(item.value)}</div>
-                      </div>
-                    </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginLeft: 'auto' }}>
+                <div className="ft-tx-filter-tabs">
+                  {['All', 'Income', 'Expense'].map(f => (
+                    <button
+                      key={f}
+                      className={`ft-filter-tab ${txFilter === f ? 'ft-filter-tab--active' : ''}`}
+                      onClick={() => setTxFilter(f)}
+                    >{f}</button>
                   ))}
                 </div>
+                <button className="ft-view-all" onClick={() => setShowAllTx(v => !v)}>
+                  {showAllTx ? 'Show Less' : 'View All ›'}
+                </button>
               </div>
             </div>
 
-            {/* Monthly Trend */}
-            <div className="ft-card ft-card--half">
-              <div className="ft-card-head">
-                <h3 className="ft-card-title">Weekly Trend</h3>
-                <span className="ft-card-badge">This Month</span>
+            {/* Search & Filter Bar */}
+            <div className="ft-search-wrap">
+              <span className="ft-search-icon">🔍</span>
+              <input
+                type="search"
+                placeholder="Search by merchant, note or category…"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="ft-search-input"
+              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500, whiteSpace: 'nowrap' }}>Account:</span>
+                <select
+                  value={accountFilter}
+                  onChange={e => setAccountFilter(e.target.value)}
+                  style={{
+                    padding: '5px 10px',
+                    borderRadius: 10,
+                    border: '1px solid #e2e8f0',
+                    fontSize: '0.8rem',
+                    color: '#334155',
+                    outline: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontWeight: 500
+                  }}
+                >
+                  <option value="All">All Accounts</option>
+                  {PAYMENT_METHODS.map(acc => (
+                    <option key={acc} value={acc}>{acc}</option>
+                  ))}
+                </select>
               </div>
-              <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={weeklyData} barSize={14} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${INR}${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            </div>
+
+            {selectedCategory && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 14px', margin: '10px 16px 4px', background: 'rgba(25,108,108,0.08)', borderRadius: 10, fontSize: '0.8rem', color: '#196c6c' }}>
+                <span>Filtering category: <strong>{selectedCategory}</strong></span>
+                <button
+                  onClick={() => setSelectedCategory(null)}
+                  style={{ border: 'none', background: 'none', color: '#196c6c', cursor: 'pointer', fontWeight: 'bold', padding: '0 4px', fontSize: '0.85rem' }}
+                >
+                  ✕ Clear Filter
+                </button>
+              </div>
+            )}
+
+            {/* Feed List Container */}
+            <div className="ft-feed-container" style={{ flex: 1 }}>
+              {allTransactions.length === 0 && !isLoading ? (
+                <div className="ft-empty-state">
+                  <div className="ft-empty-icon">💸</div>
+                  <p>No transactions recorded for {formatMonthDisplay(selectedMonth)}</p>
+                  {isAuthorized && (
+                    <button className="ft-add-btn-sm" onClick={() => openForm('income')}>
+                      ＋ Add your first transaction
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="ft-feed-wrap">
+                    {groupedTransactions.map(group => (
+                      <div key={group.key} className="ft-feed-group">
+                        <div className="ft-feed-group-header">
+                          <div className="ft-feed-group-title">
+                            {viewMode === 'category' && (
+                              <span className="ft-feed-group-icon">{CATEGORY_ICONS[group.label] || '📦'}</span>
+                            )}
+                            <span>{group.label}</span>
+                            <span className="ft-feed-group-count">{group.items.length} {group.items.length === 1 ? 'entry' : 'entries'}</span>
+                          </div>
+                          <div className="ft-feed-group-totals">
+                            {group.totalInc > 0 && <span className="ft-feed-total--income">+ {INR}{fmtAmt(group.totalInc)}</span>}
+                            {group.totalExp > 0 && <span className="ft-feed-total--expense">- {INR}{fmtAmt(group.totalExp)}</span>}
+                          </div>
+                        </div>
+
+                        <div className="ft-feed-items-list">
+                          {group.items.map(tx => {
+                            const isIncome = tx._type === 'income';
+                            const name = isIncome ? (tx.source || 'Income Source') : (tx.vendor || 'Expense Item');
+                            const sub = isIncome ? tx.remark : tx.purpose;
+                            const account = isIncome ? tx.creditedTo : tx.paymentMode;
+                            const amount = toNum(tx.amount);
+                            const cat = tx.category || (isIncome ? 'Income' : 'Expense');
+                            const dateStr = tx.date ? parseLocalDate(tx.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+                            const catColor = CATEGORY_COLORS[cat] || (isIncome ? '#10b981' : '#ef4444');
+                            const timeStr = tx.time || '06:15 PM';
+
+                            return (
+                              <div key={tx._key} className={`ft-feed-item ${isIncome ? 'ft-feed-item--income' : 'ft-feed-item--expense'}`}>
+                                {/* Left Time Column & Connector Dot */}
+                                <div className="ft-timeline-time-col">
+                                  <span className="ft-timeline-time">{timeStr}</span>
+                                  <span className="ft-timeline-dot-hollow" />
+                                </div>
+
+                                {/* Avatar Logo Box */}
+                                <div className="ft-feed-avatar" style={{ background: `linear-gradient(135deg, ${catColor}15, ${catColor}30)`, color: catColor }}>
+                                  <span className="ft-feed-avatar-icon">{CATEGORY_ICONS[cat] || (isIncome ? '💰' : '💳')}</span>
+                                </div>
+
+                                {/* Middle Details */}
+                                <div className="ft-feed-content">
+                                  <div className="ft-feed-title-row">
+                                    <div className="ft-feed-title-wrap">
+                                      <span className="ft-feed-title">{name}</span>
+                                      <span className="ft-feed-cat-chip" style={{ background: `${catColor}15`, color: catColor, borderColor: `${catColor}30` }}>
+                                        {cat}
+                                      </span>
+                                      {account && (
+                                        <span className="ft-feed-account-chip">
+                                          🏦 {account}
+                                        </span>
+                                      )}
+                                      {viewMode === 'category' && (
+                                        <span className="ft-feed-date-chip">📅 {dateStr}</span>
+                                      )}
+                                    </div>
+
+                                    <div className="ft-feed-right-wrap">
+                                      <span className={`ft-feed-amount ${isIncome ? 'ft-feed-amount--income' : 'ft-feed-amount--expense'}`}>
+                                        {isIncome ? '+' : '-'}{INR}{fmtAmt(amount)}
+                                      </span>
+                                      {isAuthorized && (
+                                        <div className="ft-feed-actions">
+                                          <button
+                                            className="ft-feed-action-btn ft-feed-action-btn--edit"
+                                            onClick={() => openForm(tx._type, tx._idx)}
+                                            title="Edit transaction"
+                                          >
+                                            ✏️
+                                          </button>
+                                          <button
+                                            className="ft-feed-action-btn ft-feed-action-btn--delete"
+                                            onClick={() => initiateDelete(tx._type, tx._idx)}
+                                            title="Delete transaction"
+                                          >
+                                            ⋮
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {sub && (
+                                    <div className="ft-feed-note">
+                                      💬 {sub}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {allTransactions.length > 7 && !showAllTx && (
+                    <button className="ft-load-more" onClick={() => setShowAllTx(true)} style={{ marginTop: 'auto' }}>
+                      Show {allTransactions.length - 7} more transactions
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Right: Charts & Budget */}
+        {/* Right Column: Stacked Cards in Requested Order */}
         <div className="ft-right-col">
-          {/* Expense by Category Donut */}
+          {/* 1. Budget Overview */}
+          <div className="ft-card" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="ft-card-head">
+              <h3 className="ft-card-title">Budget Overview</h3>
+              <span className="ft-card-badge">This Month</span>
+            </div>
+            <div className="ft-budget-list" style={{ flex: 1 }}>
+              {budgetData.map(b => {
+                const isSelected = selectedCategory === b.category;
+                return (
+                  <div
+                    key={b.category}
+                    onClick={() => setSelectedCategory(prev => prev === b.category ? null : b.category)}
+                    style={{
+                      cursor: 'pointer',
+                      opacity: selectedCategory && !isSelected ? 0.5 : 1,
+                      transition: 'opacity 0.2s',
+                      borderRadius: 8,
+                      background: isSelected ? 'rgba(0,0,0,0.03)' : 'transparent',
+                      padding: '4px 6px',
+                      margin: '0 -6px'
+                    }}
+                  >
+                    <BudgetBar {...b} />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 2. Expense by Category Donut */}
           <div className="ft-card">
             <div className="ft-card-head">
               <h3 className="ft-card-title">Expense by Category</h3>
@@ -1491,7 +1506,64 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
             )}
           </div>
 
-          {/* Income by Category Donut */}
+          {/* 3. Cash Flow Summary Donut */}
+          <div className="ft-card">
+            <div className="ft-card-head">
+              <h3 className="ft-card-title">Cash Flow Summary</h3>
+              <span className="ft-card-badge">This Month</span>
+            </div>
+            <div className="ft-cashflow-body">
+              <div style={{ width: 160, height: 160, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <PieChart width={160} height={160}>
+                  <Pie data={[
+                    { name: 'Income', value: totalIncome || 0.01 },
+                    { name: 'Expenses', value: totalExpense || 0.01 },
+                    { name: 'Savings', value: Math.max(netSavings, 0) || 0.01 },
+                  ]} cx={80} cy={80} innerRadius={45} outerRadius={70} dataKey="value" paddingAngle={2}>
+                    <Cell fill="#10b981" />
+                    <Cell fill="#ef4444" />
+                    <Cell fill="#3b82f6" />
+                  </Pie>
+                  <Tooltip formatter={(v) => `${INR}${fmtAmt(v)}`} />
+                </PieChart>
+              </div>
+              <div className="ft-cashflow-legend">
+                {[
+                  { label: 'Total Income', value: totalIncome, color: '#10b981' },
+                  { label: 'Total Expenses', value: totalExpense, color: '#ef4444' },
+                  { label: 'Savings', value: Math.max(netSavings, 0), color: '#3b82f6' },
+                ].map(item => (
+                  <div key={item.label} className="ft-legend-item">
+                    <span className="ft-legend-dot" style={{ background: item.color }} />
+                    <div>
+                      <div className="ft-legend-label">{item.label}</div>
+                      <div className="ft-legend-val">{INR}{fmtAmt(item.value)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Weekly Trend Bar Chart */}
+          <div className="ft-card">
+            <div className="ft-card-head">
+              <h3 className="ft-card-title">Weekly Trend</h3>
+              <span className="ft-card-badge">This Month</span>
+            </div>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={weeklyData} barSize={14} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${INR}${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* 5. Income by Category Donut */}
           <div className="ft-card">
             <div className="ft-card-head">
               <h3 className="ft-card-title">Income by Category</h3>
@@ -1573,7 +1645,7 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
             )}
           </div>
 
-          {/* Income vs Expense Bar */}
+          {/* 6. Income vs Expense Bar Chart */}
           <div className="ft-card">
             <div className="ft-card-head">
               <h3 className="ft-card-title">Income vs Expense</h3>
@@ -1631,6 +1703,31 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
           onSave={handleSaveTransaction}
           showToast={showToast}
         />
+      )}
+
+      {/* ── Mobile Sticky Dock ── */}
+      {isAuthorized && (
+        <div className="ft-mobile-dock">
+          <button
+            className="ft-mobile-dock-btn ft-mobile-dock-btn--income"
+            onClick={() => openForm('income')}
+          >
+            <span>↑</span> Add Income
+          </button>
+          <button
+            className="ft-mobile-dock-btn ft-mobile-dock-btn--expense"
+            onClick={() => openForm('expense')}
+          >
+            <span>↓</span> Add Expense
+          </button>
+          <button
+            className="ft-mobile-dock-btn ft-mobile-dock-btn--voice"
+            onClick={() => setVoiceModalOpen(true)}
+            aria-label="Voice input"
+          >
+            <Mic size={18} />
+          </button>
+        </div>
       )}
     </div>
   );
