@@ -2017,8 +2017,23 @@
   .ft-inline-form-body { grid-template-columns: 1fr 1fr; }
 }
 
+@media (max-width: 768px) {
+  .ft-right-col {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    gap: 16px !important;
+  }
+}
+
 @media (max-width: 640px) {
-  /* Month strip horizontal scroll */
+  /* Prevent horizontal page scroll on mobile */
+  .ft-root, .ft-container, .ft-main-grid {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+  }
+
+  /* Month strip horizontal touch scroll */
   .ft-month-strip {
     flex-direction: column;
     align-items: stretch;
@@ -2047,25 +2062,50 @@
     scrollbar-width: none;
   }
 
-  /* Metrics Grid on 393px phone */
+  /* Metrics Grid 2x2 on Mobile */
   .ft-metrics-grid {
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 8px !important;
   }
   .ft-metric-card {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
     padding: 12px 10px !important;
     border-radius: 14px !important;
+    min-width: 0 !important;
+    position: relative;
+  }
+  .ft-metric-icon {
+    position: absolute !important;
+    top: 10px !important;
+    right: 10px !important;
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 0.95rem !important;
+  }
+  .ft-metric-body {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding-right: 32px !important;
   }
   .ft-metric-value {
-    font-size: 1.05rem !important;
-    letter-spacing: -0.02em;
-    word-break: break-word;
+    font-size: 1.08rem !important;
+    font-weight: 800 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: 100% !important;
+    margin-top: 2px !important;
   }
   .ft-metric-label {
     font-size: 0.72rem !important;
   }
   .ft-metric-change {
     font-size: 0.68rem !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
   }
 
   /* Donut charts & legends vertical stack */
@@ -2081,45 +2121,79 @@
     gap: 8px !important;
   }
 
-  /* Feed Container & Items */
+  /* Mobile Feed Item Styling - Clean & No Overflow */
   .ft-feed-container {
-    padding: 10px;
+    padding: 8px !important;
   }
   .ft-feed-items-list::before {
-    left: 45px;
-  }
-  .ft-feed-item {
-    padding: 10px 12px;
-    gap: 8px;
+    display: none !important; /* Hide timeline line on phone */
   }
   .ft-timeline-time-col {
-    width: 50px;
-    gap: 6px;
+    display: none !important; /* Hide 50px fixed left column on phone */
   }
-  .ft-timeline-time {
-    font-size: 0.68rem;
+  .ft-feed-item {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 12px 10px !important;
+    border-radius: 14px !important;
   }
   .ft-feed-avatar {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 12px !important;
+    flex-shrink: 0 !important;
   }
   .ft-feed-avatar-icon {
-    font-size: 1.1rem;
+    font-size: 1.15rem !important;
+  }
+  .ft-feed-content {
+    flex: 1 !important;
+    min-width: 0 !important;
+  }
+  .ft-feed-title-row {
+    display: flex !important;
+    align-items: flex-start !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+  }
+  .ft-feed-title-wrap {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+    min-width: 0 !important;
+    flex: 1 !important;
   }
   .ft-feed-title {
-    font-size: 0.84rem;
-    max-width: 120px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 0.88rem !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    max-width: 140px !important;
+  }
+  .ft-feed-right-wrap {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-end !important;
+    gap: 4px !important;
+    margin-left: 0 !important;
+    flex-shrink: 0 !important;
   }
   .ft-feed-amount {
-    font-size: 0.88rem;
+    font-size: 0.92rem !important;
+    font-weight: 800 !important;
   }
-  .ft-feed-cat-chip, .ft-feed-account-chip {
-    font-size: 0.68rem;
-    padding: 2px 6px;
+  .ft-feed-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+  }
+  .ft-feed-cat-chip, .ft-feed-account-chip, .ft-feed-date-chip {
+    font-size: 0.68rem !important;
+    padding: 2px 6px !important;
+    white-space: nowrap !important;
   }
 
   /* Mobile dock safe area */
@@ -2129,10 +2203,8 @@
 }
 
 @media (max-width: 480px) {
-  .ft-inline-form-body { grid-template-columns: 1fr; }
-  .ft-month-actions { gap: 4px; }
-  .ft-add-income-btn, .ft-add-expense-btn { padding: 7px 10px; font-size: 0.78rem; }
-  .ft-feed-title { max-width: 90px; }
+  .ft-feed-title { max-width: 100px !important; }
+  .ft-metric-value { font-size: 1rem !important; }
 }
 
 /* Responsive Table Category Styles */
