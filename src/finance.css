@@ -2121,6 +2121,39 @@
     gap: 8px !important;
   }
 
+  /* Date Group Header Styling on Mobile */
+  .ft-feed-group-header {
+    padding: 8px 10px !important;
+    gap: 6px !important;
+    flex-wrap: wrap !important;
+    border-radius: 10px !important;
+  }
+  .ft-feed-group-title {
+    font-size: 0.75rem !important;
+    gap: 6px !important;
+    min-width: 0 !important;
+    flex: 1 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+  .ft-feed-group-count {
+    font-size: 0.68rem !important;
+    padding: 1px 6px !important;
+    white-space: nowrap !important;
+  }
+  .ft-feed-group-totals {
+    font-size: 0.72rem !important;
+    gap: 4px !important;
+    margin-left: auto !important;
+    white-space: nowrap !important;
+  }
+  .ft-feed-total--income, .ft-feed-total--expense {
+    font-size: 0.7rem !important;
+    padding: 2px 6px !important;
+    white-space: nowrap !important;
+  }
+
   /* Mobile Feed Item Styling - Clean & No Overflow */
   .ft-feed-container {
     padding: 8px !important;
