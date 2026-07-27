@@ -6,13 +6,13 @@ import {
   Receipt, Calculator, FileText, TrendingDown, TrendingUp, CheckCircle2,
   AlertTriangle, Percent, ShieldCheck, DollarSign, Building, Briefcase,
   Calendar, Plus, Edit2, Trash2, RotateCcw, Download, Sparkles, Lock,
-  ArrowRight, ShieldAlert, FileCheck, Check, Award
+  ArrowRight, ShieldAlert, FileCheck, Check, Award, Sliders, Play, RefreshCw
 } from 'lucide-react';
 import { db } from '../../firebase.js';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import ToastNotification from '../molecules/ToastNotification.jsx';
 
-const STORAGE_KEY_TAX = 'appswebnet_tax_tracker_data_v2';
+const STORAGE_KEY_TAX = 'appswebnet_tax_tracker_data_v3';
 
 // Official TEC Breakdown Data matching Hinduja Global Solutions Portal
 const OFFICIAL_TEC_STRUCTURE = {
@@ -160,7 +160,7 @@ function calculateNewRegimeTax(grossIncome, employerNps = 85596) {
 }
 
 export default function TaxTracker({ user, isAuthorized }) {
-  const [activeTab, setActiveTab] = useState('regime'); // 'regime' | 'tec' | 'deductions' | 'income' | 'advance' | 'documents'
+  const [activeTab, setActiveTab] = useState('simulator'); // 'simulator' | 'regime' | 'tec' | 'deductions' | 'income' | 'advance'
   const [toast, setToast] = useState({ message: '', type: 'success' });
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -177,6 +177,15 @@ export default function TaxTracker({ user, isAuthorized }) {
     }
     return INITIAL_TAX_DATA;
   });
+
+  // ── TAX SIMULATOR STATE ──
+  const [simGrossSalary, setSimGrossSalary] = useState(4023204); // Default HGS Gross
+  const [simNpsPercent, setSimNpsPercent] = useState(4); // 4% Employer NPS
+  const [simSec80C, setSimSec80C] = useState(150000);
+  const [simSec80D, setSimSec80D] = useState(72000);
+  const [simSec80CCD1B, setSimSec80CCD1B] = useState(50000);
+  const [simSec24b, setSimSec24b] = useState(185000);
+  const [simHraExemption, setSimHraExemption] = useState(360000);
 
   const [deductionForm, setDeductionForm] = useState({
     section: '80C',
@@ -293,6 +302,36 @@ export default function TaxTracker({ user, isAuthorized }) {
     };
   }, [taxData]);
 
+  // ── SIMULATOR COMPUTATION ──
+  const simResults = useMemo(() => {
+    const basicEst = simGrossSalary * 0.5; // 50% basic
+    const employerNpsAmt = Math.round(basicEst * (simNpsPercent / 100));
+
+    const totalOldDeductions = simSec80C + simSec80D + simSec80CCD1B + simSec24b + simHraExemption + employerNpsAmt;
+    const oldTaxable = Math.max(simGrossSalary - totalOldDeductions, 0);
+    const oldTax = calculateOldRegimeTax(oldTaxable);
+
+    const newTax = calculateNewRegimeTax(simGrossSalary, employerNpsAmt);
+
+    const winnerRegime = newTax <= oldTax ? 'NEW' : 'OLD';
+    const savings = Math.abs(oldTax - newTax);
+    const effectiveTax = winnerRegime === 'NEW' ? newTax : oldTax;
+
+    const monthlyTakeHome = Math.round((simGrossSalary - effectiveTax - employerNpsAmt) / 12);
+
+    return {
+      employerNpsAmt,
+      totalOldDeductions,
+      oldTaxable,
+      oldTax,
+      newTax,
+      winnerRegime,
+      savings,
+      effectiveTax,
+      monthlyTakeHome
+    };
+  }, [simGrossSalary, simNpsPercent, simSec80C, simSec80D, simSec80CCD1B, simSec24b, simHraExemption]);
+
   // Chart data
   const regimeComparisonChart = useMemo(() => [
     { name: 'Gross Income', 'Old Regime': calculations.totalGrossIncome, 'New Regime': calculations.totalGrossIncome },
@@ -300,6 +339,47 @@ export default function TaxTracker({ user, isAuthorized }) {
     { name: 'Taxable Income', 'Old Regime': calculations.oldRegimeTaxable, 'New Regime': Math.max(calculations.totalGrossIncome - 75000 - calculations.sec80CCD2, 0) },
     { name: 'Tax Liability', 'Old Regime': calculations.oldRegimeTax, 'New Regime': calculations.newRegimeTax }
   ], [calculations]);
+
+  // Preset Scenario Loader
+  const handleApplyPreset = (presetName) => {
+    if (presetName === 'current') {
+      setSimGrossSalary(4023204);
+      setSimNpsPercent(4);
+      setSimSec80C(150000);
+      setSimSec80D(72000);
+      setSimSec80CCD1B(50000);
+      setSimSec24b(185000);
+      setSimHraExemption(360000);
+      setToast({ message: "Simulating Current HGS Compensation Plan", type: "success" });
+    } else if (presetName === 'hike') {
+      setSimGrossSalary(4600000); // 15% Hike
+      setSimNpsPercent(6);
+      setSimSec80C(150000);
+      setSimSec80D(75000);
+      setSimSec80CCD1B(50000);
+      setSimSec24b(200000);
+      setSimHraExemption(450000);
+      setToast({ message: "Simulating 15% Salary Hike Scenario", type: "success" });
+    } else if (presetName === 'max') {
+      setSimGrossSalary(4023204);
+      setSimNpsPercent(10); // Max 10% NPS
+      setSimSec80C(150000);
+      setSimSec80D(75000);
+      setSimSec80CCD1B(50000);
+      setSimSec24b(200000);
+      setSimHraExemption(450000);
+      setToast({ message: "Simulating Maximized Old Regime Deductions", type: "success" });
+    } else if (presetName === 'zero') {
+      setSimGrossSalary(4023204);
+      setSimNpsPercent(4);
+      setSimSec80C(0);
+      setSimSec80D(0);
+      setSimSec80CCD1B(0);
+      setSimSec24b(0);
+      setSimHraExemption(0);
+      setToast({ message: "Simulating Pure New Regime (Zero Extra Investments)", type: "success" });
+    }
+  };
 
   // Handlers
   const handleAddDeduction = (e) => {
@@ -551,6 +631,26 @@ export default function TaxTracker({ user, isAuthorized }) {
       {/* ── Sub-Navigation Tabs ── */}
       <div style={{ display: 'flex', gap: 12, borderBottom: '2px solid #e2e8f0', paddingBottom: 8, overflowX: 'auto' }}>
         <button
+          onClick={() => setActiveTab('simulator')}
+          style={{
+            padding: '10px 18px',
+            borderRadius: 12,
+            border: 'none',
+            background: activeTab === 'simulator' ? '#047857' : 'transparent',
+            color: activeTab === 'simulator' ? '#ffffff' : '#64748b',
+            fontWeight: 800,
+            fontSize: '0.88rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            whiteSpace: 'nowrap'
+          }}
+        >
+          <Sliders size={16} /> Interactive Tax Simulator & Scenario Planner
+        </button>
+
+        <button
           onClick={() => setActiveTab('tec')}
           style={{
             padding: '10px 18px',
@@ -567,7 +667,7 @@ export default function TaxTracker({ user, isAuthorized }) {
             whiteSpace: 'nowrap'
           }}
         >
-          <Building size={16} /> Official HGS TEC Compensation Breakdown
+          <Building size={16} /> Official HGS TEC Breakdown
         </button>
 
         <button
@@ -627,34 +727,238 @@ export default function TaxTracker({ user, isAuthorized }) {
             whiteSpace: 'nowrap'
           }}
         >
-          <Briefcase size={16} /> Combined Salary & Income
-        </button>
-
-        <button
-          onClick={() => setActiveTab('advance')}
-          style={{
-            padding: '10px 18px',
-            borderRadius: 12,
-            border: 'none',
-            background: activeTab === 'advance' ? '#047857' : 'transparent',
-            color: activeTab === 'advance' ? '#ffffff' : '#64748b',
-            fontWeight: 800,
-            fontSize: '0.88rem',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            whiteSpace: 'nowrap'
-          }}
-        >
-          <Calendar size={16} /> Advance Tax Deadlines
+          <Briefcase size={16} /> Salary & Income
         </button>
       </div>
+
+      {/* ── TAB: TAX SIMULATOR & WHAT-IF SCENARIO PLANNER ── */}
+      {activeTab === 'simulator' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 400px', gap: 24 }}>
+          {/* Left Sliders & Preset Selector */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Presets */}
+            <div style={{ background: '#ffffff', borderRadius: 20, padding: 20, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 12 }}>
+                ⚡ Quick Preset Scenarios
+              </span>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => handleApplyPreset('current')}
+                  style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#f8fafc', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}
+                >
+                  🏢 Current HGS Plan (₹40.2L + 4% NPS)
+                </button>
+                <button
+                  onClick={() => handleApplyPreset('hike')}
+                  style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#047857', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}
+                >
+                  🚀 +15% Salary Hike (₹46L + 6% NPS)
+                </button>
+                <button
+                  onClick={() => handleApplyPreset('max')}
+                  style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #e9d5ff', background: '#faf5ff', color: '#7e22ce', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}
+                >
+                  🛡️ Max Old Regime Deductions
+                </button>
+                <button
+                  onClick={() => handleApplyPreset('zero')}
+                  style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #fed7aa', background: '#fff7ed', color: '#c2410c', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}
+                >
+                  ⚡ Pure New Regime (Zero Investments)
+                </button>
+              </div>
+            </div>
+
+            {/* Sliders Input Card */}
+            <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>"What-If" Financial Controls</h3>
+
+              {/* Slider 1: Gross Annual Salary */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>Gross Annual Salary / Package</label>
+                  <strong style={{ fontSize: '0.95rem', color: '#047857' }}>₹{(simGrossSalary / 100000).toFixed(2)} Lakhs</strong>
+                </div>
+                <input
+                  type="range"
+                  min={2000000}
+                  max={6000000}
+                  step={50000}
+                  value={simGrossSalary}
+                  onChange={e => setSimGrossSalary(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#047857' }}
+                />
+              </div>
+
+              {/* Slider 2: Employer NPS % (Sec 80CCD(2)) */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>Employer NPS % (Sec 80CCD(2))</label>
+                  <strong style={{ fontSize: '0.95rem', color: '#8b5cf6' }}>{simNpsPercent}% of Basic (₹{simResults.employerNpsAmt.toLocaleString('en-IN')})</strong>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={10}
+                  step={1}
+                  value={simNpsPercent}
+                  onChange={e => setSimNpsPercent(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#8b5cf6' }}
+                />
+                <span style={{ fontSize: '0.74rem', color: '#64748b' }}>Exempt under both Old & New Tax Regimes!</span>
+              </div>
+
+              {/* Slider 3: Section 80C */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>Section 80C (PPF, EPF, ELSS, Tuition)</label>
+                  <strong style={{ fontSize: '0.95rem', color: '#0284c7' }}>₹{simSec80C.toLocaleString('en-IN')}</strong>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={150000}
+                  step={5000}
+                  value={simSec80C}
+                  onChange={e => setSimSec80C(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#0284c7' }}
+                />
+              </div>
+
+              {/* Slider 4: Section 80D Health Insurance */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>Section 80D Health Insurance</label>
+                  <strong style={{ fontSize: '0.95rem', color: '#0284c7' }}>₹{simSec80D.toLocaleString('en-IN')}</strong>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={75000}
+                  step={2000}
+                  value={simSec80D}
+                  onChange={e => setSimSec80D(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#0284c7' }}
+                />
+              </div>
+
+              {/* Slider 5: Section 80CCD(1B) Self NPS */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>Section 80CCD(1B) Additional NPS</label>
+                  <strong style={{ fontSize: '0.95rem', color: '#0284c7' }}>₹{simSec80CCD1B.toLocaleString('en-IN')}</strong>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={50000}
+                  step={5000}
+                  value={simSec80CCD1B}
+                  onChange={e => setSimSec80CCD1B(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#0284c7' }}
+                />
+              </div>
+
+              {/* Slider 6: Section 24(b) Home Loan Interest */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>Section 24(b) Home Loan Interest</label>
+                  <strong style={{ fontSize: '0.95rem', color: '#0284c7' }}>₹{simSec24b.toLocaleString('en-IN')}</strong>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={200000}
+                  step={10000}
+                  value={simSec24b}
+                  onChange={e => setSimSec24b(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#0284c7' }}
+                />
+              </div>
+
+              {/* Slider 7: Section 10(13A) HRA Exemption */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>HRA Rent Exemption (Annual)</label>
+                  <strong style={{ fontSize: '0.95rem', color: '#0284c7' }}>₹{simHraExemption.toLocaleString('en-IN')}</strong>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={500000}
+                  step={10000}
+                  value={simHraExemption}
+                  onChange={e => setSimHraExemption(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#0284c7' }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Right Live Computation Results Card */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{
+              background: 'linear-gradient(135deg, #0f172a 0%, #047857 100%)',
+              borderRadius: 24,
+              padding: 26,
+              color: '#ffffff',
+              boxShadow: '0 12px 32px rgba(4, 120, 87, 0.25)',
+              position: 'sticky',
+              top: 20
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Sparkles size={22} color="#fef08a" />
+                  <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>Simulated Output</h4>
+                </div>
+                <span style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', padding: '4px 12px', borderRadius: 99, fontSize: '0.76rem', fontWeight: 800 }}>
+                  {simResults.winnerRegime} REGIME WINS 🏆
+                </span>
+              </div>
+
+              {/* Key numbers */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: 16, borderRadius: 16 }}>
+                  <span style={{ fontSize: '0.76rem', color: '#a7f3d0', textTransform: 'uppercase', fontWeight: 700 }}>Simulated Monthly In-Hand Salary</span>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#ffffff', marginTop: 2 }}>
+                    ₹{simResults.monthlyTakeHome.toLocaleString('en-IN')} <span style={{ fontSize: '0.9rem', color: '#a7f3d0' }}>/ month</span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: 12, borderRadius: 12 }}>
+                    <span style={{ fontSize: '0.7rem', color: '#cbd5e1' }}>New Regime Tax</span>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 900, color: simResults.winnerRegime === 'NEW' ? '#34d399' : '#ffffff' }}>
+                      ₹{simResults.newTax.toLocaleString('en-IN')}
+                    </div>
+                  </div>
+                  <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: 12, borderRadius: 12 }}>
+                    <span style={{ fontSize: '0.7rem', color: '#cbd5e1' }}>Old Regime Tax</span>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 900, color: simResults.winnerRegime === 'OLD' ? '#34d399' : '#ffffff' }}>
+                      ₹{simResults.oldTax.toLocaleString('en-IN')}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(254, 240, 138, 0.15)', border: '1px solid rgba(254, 240, 138, 0.3)', padding: 14, borderRadius: 14 }}>
+                  <span style={{ fontSize: '0.76rem', color: '#fef08a', fontWeight: 800 }}>TAX SAVINGS</span>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#fef08a', marginTop: 2 }}>
+                    ₹{simResults.savings.toLocaleString('en-IN')} Saved via {simResults.winnerRegime} Regime
+                  </div>
+                </div>
+
+                <div style={{ fontSize: '0.78rem', color: '#cbd5e1', lineHeight: 1.5, marginTop: 4 }}>
+                  💡 <strong>Break-Even Insight:</strong> Total Old Regime Deductions simulated: <strong>₹{simResults.totalOldDeductions.toLocaleString('en-IN')}</strong>. Employer NPS 80CCD(2) gives an extra tax exemption of <strong>₹{simResults.employerNpsAmt.toLocaleString('en-IN')}</strong> even under the New Regime.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── TAB: OFFICIAL HGS TEC COMPENSATION BREAKDOWN ── */}
       {activeTab === 'tec' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {/* Header summary banner */}
           <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
               <div>
@@ -674,7 +978,6 @@ export default function TaxTracker({ user, isAuthorized }) {
               </div>
             </div>
 
-            {/* Pay elements declaration row */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, background: '#f8fafc', padding: 18, borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 20 }}>
               <div>
                 <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>MEAL CARD</span>
@@ -693,7 +996,6 @@ export default function TaxTracker({ user, isAuthorized }) {
               </div>
             </div>
 
-            {/* Official Table */}
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
                 <thead>
@@ -739,9 +1041,7 @@ export default function TaxTracker({ user, isAuthorized }) {
       {/* ── TAB 1: OLD VS NEW REGIME COMPARISON ── */}
       {activeTab === 'regime' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px', gap: 24 }}>
-          {/* Left: Detailed Comparison Table & Bar Chart */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            {/* Bar Chart Comparison */}
             <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
                 <div>
@@ -763,7 +1063,6 @@ export default function TaxTracker({ user, isAuthorized }) {
               </ResponsiveContainer>
             </div>
 
-            {/* Side-by-Side Table */}
             <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
               <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>Detailed Side-by-Side Tax Computation</h3>
               <div style={{ overflowX: 'auto' }}>
@@ -832,7 +1131,6 @@ export default function TaxTracker({ user, isAuthorized }) {
             </div>
           </div>
 
-          {/* Right Sidebar: Smart Recommendation Card */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             <div style={{
               background: 'linear-gradient(135deg, #047857 0%, #064e3b 100%)',
@@ -876,7 +1174,6 @@ export default function TaxTracker({ user, isAuthorized }) {
       {/* ── TAB 2: DEDUCTIONS VAULT ── */}
       {activeTab === 'deductions' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* Section 80C Progress */}
           <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <div>
@@ -897,7 +1194,6 @@ export default function TaxTracker({ user, isAuthorized }) {
             </div>
           </div>
 
-          {/* Table of Deductions */}
           <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Tax Savings & Exemptions Vault</h3>
@@ -973,7 +1269,6 @@ export default function TaxTracker({ user, isAuthorized }) {
       {/* ── TAB 3: SALARY & OTHER INCOME ── */}
       {activeTab === 'income' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {/* Salary Breakdown Table */}
           <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
             <h3 style={{ margin: '0 0 16px', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Annual Salary & Employer TDS Summary</h3>
             <div style={{ overflowX: 'auto' }}>
@@ -1006,7 +1301,6 @@ export default function TaxTracker({ user, isAuthorized }) {
             </div>
           </div>
 
-          {/* Other Income Sources */}
           <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
             <h3 style={{ margin: '0 0 16px', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Other Income & Capital Gains</h3>
             <div style={{ overflowX: 'auto' }}>
