@@ -12,7 +12,7 @@ import { db } from '../../firebase.js';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import ToastNotification from '../molecules/ToastNotification.jsx';
 
-const STORAGE_KEY_TAX = 'appswebnet_tax_tracker_data_v3';
+const STORAGE_KEY_TAX = 'appswebnet_tax_tracker_data_v4';
 
 // Official TEC Breakdown Data matching Hinduja Global Solutions Portal
 const OFFICIAL_TEC_STRUCTURE = {
@@ -69,30 +69,17 @@ const INITIAL_TAX_DATA = {
     { id: 'inc_3', source: 'Stock Dividend Income', amount: 18000, tdsDeducted: 1800, category: 'Dividends' }
   ],
   deductions: [
-    // Section 80CCD(2) Employer NPS (Exempt in New Regime)
     { id: 'ded_0', section: '80CCD(2)', category: 'Employer NPS Contribution (4% of Basic)', maxLimit: 214000, amount: 85596, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Exempt under both Old & New Regimes! PRAN: 110128446556' },
-
-    // Section 80C (Limit 1.5L)
     { id: 'ded_1', section: '80C', category: 'EPF (Employee Provident Fund)', maxLimit: 150000, amount: 150000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Deducted directly from salary' },
     { id: 'ded_2', section: '80C', category: 'PPF (Public Provident Fund)', maxLimit: 150000, amount: 75000, proofStatus: 'Verified', earner: 'Sweta Gupta', notes: 'SBI PPF Account' },
     { id: 'ded_3', section: '80C', category: 'ELSS Tax Saver Mutual Funds', maxLimit: 150000, amount: 50000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Mirae Asset Tax Saver' },
     { id: 'ded_4', section: '80C', category: 'Children School Tuition Fees', maxLimit: 150000, amount: 85000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Amishi School Tuition Fees' },
-    
-    // Section 80D (Health Insurance)
     { id: 'ded_5', section: '80D', category: 'Family Health Insurance (Self & Children)', maxLimit: 25000, amount: 25000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'HDFC ERGO Optima Secure' },
     { id: 'ded_6', section: '80D', category: 'Parents Medical Insurance (Senior Citizens)', maxLimit: 50000, amount: 42000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Star Health Senior Citizen' },
     { id: 'ded_7', section: '80D', category: 'Preventive Health Checkup', maxLimit: 5000, amount: 5000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Annual Health Checkup' },
-
-    // Section 80CCD(1B) (NPS)
     { id: 'ded_8', section: '80CCD(1B)', category: 'NPS Additional Self Contribution', maxLimit: 50000, amount: 50000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Tier 1 NPS Account' },
-
-    // Section 24(b) (Home Loan Interest)
     { id: 'ded_9', section: 'Sec 24(b)', category: 'Home Loan Interest (Self Occupied)', maxLimit: 200000, amount: 185000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'HDFC Home Loan Interest Certificate' },
-
-    // Section 10(13A) HRA Exemption
     { id: 'ded_10', section: 'Sec 10(13A)', category: 'HRA Rent Paid Exemption', maxLimit: 450000, amount: 360000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Annual House Rent Receipts & Landlord PAN' },
-
-    // Section 80TTA
     { id: 'ded_11', section: '80TTA', category: 'Savings Account Interest Exemption', maxLimit: 10000, amount: 10000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Savings Bank Interest' }
   ],
   advanceTaxPaid: [
@@ -111,19 +98,32 @@ const INITIAL_TAX_DATA = {
   ]
 };
 
+// Defensive merger helper to ensure arrays and properties are NEVER undefined
+function sanitizeTaxData(raw) {
+  if (!raw || typeof raw !== 'object') return INITIAL_TAX_DATA;
+  return {
+    fy: raw.fy || '2026-27',
+    tecStructure: raw.tecStructure || OFFICIAL_TEC_STRUCTURE,
+    salaries: Array.isArray(raw.salaries) && raw.salaries.length > 0 ? raw.salaries : INITIAL_TAX_DATA.salaries,
+    otherIncome: Array.isArray(raw.otherIncome) ? raw.otherIncome : INITIAL_TAX_DATA.otherIncome,
+    deductions: Array.isArray(raw.deductions) ? raw.deductions : INITIAL_TAX_DATA.deductions,
+    advanceTaxPaid: Array.isArray(raw.advanceTaxPaid) ? raw.advanceTaxPaid : INITIAL_TAX_DATA.advanceTaxPaid,
+    documents: Array.isArray(raw.documents) ? raw.documents : INITIAL_TAX_DATA.documents
+  };
+}
+
 // Calculate Old Regime Tax Liability
 function calculateOldRegimeTax(taxableIncome) {
-  let income = Math.max(taxableIncome - 50000, 0); // Std Deduction 50k
+  let income = Math.max((taxableIncome || 0) - 50000, 0); // Std Deduction 50k
   if (income <= 250000) return 0;
-  if (income <= 500000) return (income - 250000) * 0.05;
+  if (income <= 500000) return Math.round((income - 250000) * 0.05);
 
-  let tax = 0;
-  tax += 250000 * 0.05; // 12,500
+  let tax = 12500; // 2.5L to 5L @ 5%
 
   if (income <= 1000000) {
     tax += (income - 500000) * 0.20;
   } else {
-    tax += 500000 * 0.20; // 1,00,000
+    tax += 100000; // 5L to 10L @ 20%
     tax += (income - 1000000) * 0.30;
   }
 
@@ -132,27 +132,25 @@ function calculateOldRegimeTax(taxableIncome) {
 
 // Calculate New Regime Tax Liability (FY 2025-26 & FY 2026-27 Slabs)
 function calculateNewRegimeTax(grossIncome, employerNps = 85596) {
-  // Std Deduction 75k + Employer NPS Sec 80CCD(2) exempt in New Regime!
-  let income = Math.max(grossIncome - 75000 - employerNps, 0);
+  let income = Math.max((grossIncome || 0) - 75000 - (employerNps || 0), 0);
   if (income <= 300000) return 0;
-  if (income <= 700000) return 0;
+  if (income <= 700000) return 0; // Rebate 87A
 
-  let tax = 0;
-  tax += 400000 * 0.05; // 20,000
+  let tax = 20000; // 3L to 7L @ 5% (4,00,000 * 5%)
 
   if (income <= 1000000) {
     tax += (income - 700000) * 0.10;
   } else if (income <= 1200000) {
-    tax += 300000 * 0.10; // 30,000
+    tax += 30000; // 30,000
     tax += (income - 1000000) * 0.15;
   } else if (income <= 1500000) {
-    tax += 300000 * 0.10; // 30,000
-    tax += 200000 * 0.15; // 30,000
+    tax += 30000; // 30,000
+    tax += 30000; // 30,000
     tax += (income - 1200000) * 0.20;
   } else {
-    tax += 300000 * 0.10; // 30,000
-    tax += 200000 * 0.15; // 30,000
-    tax += 300000 * 0.20; // 60,000
+    tax += 30000; // 30,000
+    tax += 30000; // 30,000
+    tax += 60000; // 60,000
     tax += (income - 1500000) * 0.30;
   }
 
@@ -160,17 +158,17 @@ function calculateNewRegimeTax(grossIncome, employerNps = 85596) {
 }
 
 export default function TaxTracker({ user, isAuthorized }) {
-  const [activeTab, setActiveTab] = useState('simulator'); // 'simulator' | 'regime' | 'tec' | 'deductions' | 'income' | 'advance'
+  const [activeTab, setActiveTab] = useState('simulator'); // 'simulator' | 'tec' | 'regime' | 'deductions' | 'income' | 'advance'
   const [toast, setToast] = useState({ message: '', type: 'success' });
   const [modalOpen, setModalOpen] = useState(false);
 
-  // Data state with localStorage persistence
+  // Safe data state initialization
   const [taxData, setTaxData] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_TAX);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.salaries) return parsed;
+        return sanitizeTaxData(parsed);
       }
     } catch (e) {
       console.error("Failed to load tax data from localStorage", e);
@@ -178,9 +176,12 @@ export default function TaxTracker({ user, isAuthorized }) {
     return INITIAL_TAX_DATA;
   });
 
+  // Ensure taxData always has safe properties
+  const safeData = useMemo(() => sanitizeTaxData(taxData), [taxData]);
+
   // ── TAX SIMULATOR STATE ──
-  const [simGrossSalary, setSimGrossSalary] = useState(4023204); // Default HGS Gross
-  const [simNpsPercent, setSimNpsPercent] = useState(4); // 4% Employer NPS
+  const [simGrossSalary, setSimGrossSalary] = useState(4023204);
+  const [simNpsPercent, setSimNpsPercent] = useState(4);
   const [simSec80C, setSimSec80C] = useState(150000);
   const [simSec80D, setSimSec80D] = useState(72000);
   const [simSec80CCD1B, setSimSec80CCD1B] = useState(50000);
@@ -197,7 +198,7 @@ export default function TaxTracker({ user, isAuthorized }) {
     notes: ''
   });
 
-  // Sync with Firestore
+  // Sync with Firestore safely
   useEffect(() => {
     const loadFromFirestore = async () => {
       if (!db || !user) return;
@@ -205,7 +206,7 @@ export default function TaxTracker({ user, isAuthorized }) {
         const docRef = doc(db, 'finance', 'tax_tracker');
         const snap = await getDoc(docRef);
         if (snap.exists() && snap.data()?.taxData) {
-          const remoteData = snap.data().taxData;
+          const remoteData = sanitizeTaxData(snap.data().taxData);
           setTaxData(remoteData);
           localStorage.setItem(STORAGE_KEY_TAX, JSON.stringify(remoteData));
         }
@@ -218,9 +219,10 @@ export default function TaxTracker({ user, isAuthorized }) {
 
   // Persist helper
   const saveTaxData = async (updatedData) => {
-    setTaxData(updatedData);
+    const clean = sanitizeTaxData(updatedData);
+    setTaxData(clean);
     try {
-      localStorage.setItem(STORAGE_KEY_TAX, JSON.stringify(updatedData));
+      localStorage.setItem(STORAGE_KEY_TAX, JSON.stringify(clean));
     } catch (err) {
       console.error("Failed to save tax data to localStorage:", err);
     }
@@ -228,7 +230,7 @@ export default function TaxTracker({ user, isAuthorized }) {
     if (db && user) {
       try {
         const docRef = doc(db, 'finance', 'tax_tracker');
-        await setDoc(docRef, { taxData: updatedData, updatedAt: serverTimestamp() }, { merge: true });
+        await setDoc(docRef, { taxData: clean, updatedAt: serverTimestamp() }, { merge: true });
       } catch (err) {
         console.error("Failed to save tax data to Firestore:", err);
       }
@@ -237,32 +239,36 @@ export default function TaxTracker({ user, isAuthorized }) {
 
   // ── Calculation Engine ──
   const calculations = useMemo(() => {
-    const totalGrossSalary = taxData.salaries.reduce((acc, s) => acc + (s.grossSalary || 0), 0);
-    const totalOtherIncome = taxData.otherIncome.reduce((acc, i) => acc + (i.amount || 0), 0);
+    const salaries = safeData.salaries || [];
+    const otherIncome = safeData.otherIncome || [];
+    const deductions = safeData.deductions || [];
+    const advanceTaxPaid = safeData.advanceTaxPaid || [];
+
+    const totalGrossSalary = salaries.reduce((acc, s) => acc + (Number(s.grossSalary) || 0), 0);
+    const totalOtherIncome = otherIncome.reduce((acc, i) => acc + (Number(i.amount) || 0), 0);
     const totalGrossIncome = totalGrossSalary + totalOtherIncome;
 
-    const salaryTDS = taxData.salaries.reduce((acc, s) => acc + (s.tdsDeducted || 0), 0);
-    const otherTDS = taxData.otherIncome.reduce((acc, i) => acc + (i.tdsDeducted || 0), 0);
+    const salaryTDS = salaries.reduce((acc, s) => acc + (Number(s.tdsDeducted) || 0), 0);
+    const otherTDS = otherIncome.reduce((acc, i) => acc + (Number(i.tdsDeducted) || 0), 0);
     const totalTDS = salaryTDS + otherTDS;
 
-    const totalAdvanceTax = taxData.advanceTaxPaid.reduce((acc, a) => acc + (a.paidAmt || 0), 0);
+    const totalAdvanceTax = advanceTaxPaid.reduce((acc, a) => acc + (Number(a.paidAmt) || 0), 0);
     const totalPrepaidTax = totalTDS + totalAdvanceTax;
 
-    // Deductions Breakup
-    const sec80C = taxData.deductions.filter(d => d.section === '80C').reduce((acc, d) => acc + (d.amount || 0), 0);
+    const sec80C = deductions.filter(d => d.section === '80C').reduce((acc, d) => acc + (Number(d.amount) || 0), 0);
     const sec80C_Claimed = Math.min(sec80C, 150000);
 
-    const sec80D = taxData.deductions.filter(d => d.section === '80D').reduce((acc, d) => acc + (d.amount || 0), 0);
-    const sec80CCD = taxData.deductions.filter(d => d.section === '80CCD(1B)').reduce((acc, d) => acc + (d.amount || 0), 0);
+    const sec80D = deductions.filter(d => d.section === '80D').reduce((acc, d) => acc + (Number(d.amount) || 0), 0);
+    const sec80CCD = deductions.filter(d => d.section === '80CCD(1B)').reduce((acc, d) => acc + (Number(d.amount) || 0), 0);
     const sec80CCD_Claimed = Math.min(sec80CCD, 50000);
 
-    const sec80CCD2 = taxData.deductions.filter(d => d.section === '80CCD(2)').reduce((acc, d) => acc + (d.amount || 0), 0);
+    const sec80CCD2 = deductions.filter(d => d.section === '80CCD(2)').reduce((acc, d) => acc + (Number(d.amount) || 0), 0);
 
-    const sec24b = taxData.deductions.filter(d => d.section === 'Sec 24(b)').reduce((acc, d) => acc + (d.amount || 0), 0);
+    const sec24b = deductions.filter(d => d.section === 'Sec 24(b)').reduce((acc, d) => acc + (Number(d.amount) || 0), 0);
     const sec24b_Claimed = Math.min(sec24b, 200000);
 
-    const hra = taxData.deductions.filter(d => d.section === 'Sec 10(13A)').reduce((acc, d) => acc + (d.amount || 0), 0);
-    const sec80TTA = taxData.deductions.filter(d => d.section === '80TTA').reduce((acc, d) => acc + (d.amount || 0), 0);
+    const hra = deductions.filter(d => d.section === 'Sec 10(13A)').reduce((acc, d) => acc + (Number(d.amount) || 0), 0);
+    const sec80TTA = deductions.filter(d => d.section === '80TTA').reduce((acc, d) => acc + (Number(d.amount) || 0), 0);
     const sec80TTA_Claimed = Math.min(sec80TTA, 10000);
 
     const totalEligibleDeductions = sec80C_Claimed + sec80D + sec80CCD_Claimed + sec80CCD2 + sec24b_Claimed + hra + sec80TTA_Claimed;
@@ -300,15 +306,15 @@ export default function TaxTracker({ user, isAuthorized }) {
       effectiveTax,
       netTaxPayableOrRefund
     };
-  }, [taxData]);
+  }, [safeData]);
 
   // ── SIMULATOR COMPUTATION ──
   const simResults = useMemo(() => {
-    const basicEst = simGrossSalary * 0.5; // 50% basic
-    const employerNpsAmt = Math.round(basicEst * (simNpsPercent / 100));
+    const basicEst = (simGrossSalary || 0) * 0.5;
+    const employerNpsAmt = Math.round(basicEst * ((simNpsPercent || 0) / 100));
 
-    const totalOldDeductions = simSec80C + simSec80D + simSec80CCD1B + simSec24b + simHraExemption + employerNpsAmt;
-    const oldTaxable = Math.max(simGrossSalary - totalOldDeductions, 0);
+    const totalOldDeductions = (simSec80C || 0) + (simSec80D || 0) + (simSec80CCD1B || 0) + (simSec24b || 0) + (simHraExemption || 0) + employerNpsAmt;
+    const oldTaxable = Math.max((simGrossSalary || 0) - totalOldDeductions, 0);
     const oldTax = calculateOldRegimeTax(oldTaxable);
 
     const newTax = calculateNewRegimeTax(simGrossSalary, employerNpsAmt);
@@ -317,7 +323,7 @@ export default function TaxTracker({ user, isAuthorized }) {
     const savings = Math.abs(oldTax - newTax);
     const effectiveTax = winnerRegime === 'NEW' ? newTax : oldTax;
 
-    const monthlyTakeHome = Math.round((simGrossSalary - effectiveTax - employerNpsAmt) / 12);
+    const monthlyTakeHome = Math.max(Math.round(((simGrossSalary || 0) - effectiveTax - employerNpsAmt) / 12), 0);
 
     return {
       employerNpsAmt,
@@ -352,7 +358,7 @@ export default function TaxTracker({ user, isAuthorized }) {
       setSimHraExemption(360000);
       setToast({ message: "Simulating Current HGS Compensation Plan", type: "success" });
     } else if (presetName === 'hike') {
-      setSimGrossSalary(4600000); // 15% Hike
+      setSimGrossSalary(4600000);
       setSimNpsPercent(6);
       setSimSec80C(150000);
       setSimSec80D(75000);
@@ -362,7 +368,7 @@ export default function TaxTracker({ user, isAuthorized }) {
       setToast({ message: "Simulating 15% Salary Hike Scenario", type: "success" });
     } else if (presetName === 'max') {
       setSimGrossSalary(4023204);
-      setSimNpsPercent(10); // Max 10% NPS
+      setSimNpsPercent(10);
       setSimSec80C(150000);
       setSimSec80D(75000);
       setSimSec80CCD1B(50000);
@@ -395,7 +401,7 @@ export default function TaxTracker({ user, isAuthorized }) {
       earner: deductionForm.earner,
       notes: deductionForm.notes
     };
-    const updated = { ...taxData, deductions: [newDeduction, ...taxData.deductions] };
+    const updated = { ...safeData, deductions: [newDeduction, ...safeData.deductions] };
     saveTaxData(updated);
     setModalOpen(false);
     setToast({ message: `Added deduction ${deductionForm.category}`, type: 'success' });
@@ -403,7 +409,7 @@ export default function TaxTracker({ user, isAuthorized }) {
 
   const handleDeleteDeduction = (id, e) => {
     if (e) e.stopPropagation();
-    const updated = { ...taxData, deductions: taxData.deductions.filter(d => d.id !== id) };
+    const updated = { ...safeData, deductions: safeData.deductions.filter(d => d.id !== id) };
     saveTaxData(updated);
     setToast({ message: 'Deduction record removed', type: 'success' });
   };
@@ -416,12 +422,12 @@ export default function TaxTracker({ user, isAuthorized }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
       {/* ── Tax Tracker Hero Banner ── */}
       <div style={{
         background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #047857 100%)',
         borderRadius: 24,
-        padding: '28px',
+        padding: '24px',
         color: '#ffffff',
         boxShadow: '0 16px 40px rgba(4, 120, 87, 0.25)',
         border: '1px solid rgba(255, 255, 255, 0.15)',
@@ -439,24 +445,25 @@ export default function TaxTracker({ user, isAuthorized }) {
           pointerEvents: 'none'
         }} />
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{
-              width: 60,
-              height: 60,
-              borderRadius: 18,
+              width: 54,
+              height: 54,
+              borderRadius: 16,
               background: 'linear-gradient(135deg, #10b981, #047857)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               boxShadow: '0 6px 20px rgba(16, 185, 129, 0.4)',
-              border: '2px solid rgba(255, 255, 255, 0.3)'
+              border: '2px solid rgba(255, 255, 255, 0.3)',
+              flexShrink: 0
             }}>
-              <Receipt size={32} color="#fff" />
+              <Receipt size={28} color="#fff" />
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 900, letterSpacing: '-0.02em' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <h1 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 900, letterSpacing: '-0.02em' }}>
                   Income Tax Tracking System
                 </h1>
                 <span style={{
@@ -465,13 +472,13 @@ export default function TaxTracker({ user, isAuthorized }) {
                   border: '1px solid rgba(52, 211, 153, 0.4)',
                   padding: '3px 12px',
                   borderRadius: 99,
-                  fontSize: '0.78rem',
+                  fontSize: '0.76rem',
                   fontWeight: 800
                 }}>
-                  FY {taxData.fy} (AY 2027-28)
+                  FY {safeData.fy} (AY 2027-28)
                 </span>
               </div>
-              <p style={{ margin: '6px 0 0', fontSize: '0.88rem', color: '#cbd5e1' }}>
+              <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#cbd5e1' }}>
                 Taxpayers: <strong>Amit Singh & Sweta Gupta</strong> | Employer: <strong>Hinduja Global Solutions</strong>
               </p>
             </div>
@@ -481,20 +488,20 @@ export default function TaxTracker({ user, isAuthorized }) {
           <div style={{
             background: 'rgba(255, 255, 255, 0.1)',
             backdropFilter: 'blur(10px)',
-            borderRadius: 18,
-            padding: '12px 20px',
+            borderRadius: 16,
+            padding: '10px 18px',
             border: '1px solid rgba(255, 255, 255, 0.2)',
             display: 'flex',
             alignItems: 'center',
-            gap: 14
+            gap: 12
           }}>
-            <Sparkles size={24} color="#fef08a" />
+            <Sparkles size={22} color="#fef08a" />
             <div>
-              <div style={{ fontSize: '0.74rem', color: '#a7f3d0', textTransform: 'uppercase', fontWeight: 800 }}>Opted Company Tax Regime</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#ffffff' }}>
+              <div style={{ fontSize: '0.7rem', color: '#a7f3d0', textTransform: 'uppercase', fontWeight: 800 }}>Opted Company Tax Regime</div>
+              <div style={{ fontSize: '1rem', fontWeight: 900, color: '#ffffff' }}>
                 NEW TAX REGIME ✓
               </div>
-              <div style={{ fontSize: '0.76rem', color: '#fef08a', fontWeight: 700 }}>
+              <div style={{ fontSize: '0.74rem', color: '#fef08a', fontWeight: 700 }}>
                 Saves ₹{calculations.taxSavings.toLocaleString('en-IN')} in tax liability!
               </div>
             </div>
@@ -502,15 +509,15 @@ export default function TaxTracker({ user, isAuthorized }) {
         </div>
 
         {/* Action Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginTop: 24, paddingTop: 16, borderTop: '1px solid rgba(255, 255, 255, 0.15)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: '0.8rem', color: '#cbd5e1', fontWeight: 700 }}>PRAN NO:</span>
-            <span style={{ background: 'rgba(255, 255, 255, 0.15)', color: '#fef08a', padding: '4px 12px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 800 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginTop: 20, paddingTop: 14, borderTop: '1px solid rgba(255, 255, 255, 0.15)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 700 }}>PRAN NO:</span>
+            <span style={{ background: 'rgba(255, 255, 255, 0.15)', color: '#fef08a', padding: '3px 10px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 800 }}>
               110128446556
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {isAuthorized && (
               <button
                 onClick={() => setModalOpen(true)}
@@ -518,18 +525,18 @@ export default function TaxTracker({ user, isAuthorized }) {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 6,
-                  padding: '9px 16px',
-                  borderRadius: 12,
+                  padding: '8px 14px',
+                  borderRadius: 10,
                   background: '#10b981',
                   color: '#ffffff',
                   fontWeight: 800,
-                  fontSize: '0.84rem',
+                  fontSize: '0.82rem',
                   border: 'none',
                   boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)',
                   cursor: 'pointer'
                 }}
               >
-                <Plus size={16} /> Log Tax Deduction
+                <Plus size={15} /> Log Tax Deduction
               </button>
             )}
             {isAuthorized && (
@@ -539,13 +546,13 @@ export default function TaxTracker({ user, isAuthorized }) {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 6,
-                  padding: '9px 14px',
-                  borderRadius: 12,
+                  padding: '8px 12px',
+                  borderRadius: 10,
                   background: 'rgba(255, 255, 255, 0.1)',
                   color: '#cbd5e1',
                   border: '1px solid rgba(255, 255, 255, 0.2)',
                   fontWeight: 700,
-                  fontSize: '0.82rem',
+                  fontSize: '0.8rem',
                   cursor: 'pointer'
                 }}
               >
@@ -557,70 +564,70 @@ export default function TaxTracker({ user, isAuthorized }) {
       </div>
 
       {/* ── 4 Overview Key Metrics Cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
         {/* Total TEC Employment Cost */}
-        <div style={{ background: '#ffffff', borderRadius: 20, padding: '20px', border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+        <div style={{ background: '#ffffff', borderRadius: 18, padding: '18px', border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>HGS Total TEC Package</span>
-            <span style={{ background: '#e0f2fe', color: '#0284c7', padding: '3px 10px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 800 }}>Company TEC</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b' }}>HGS Total TEC Package</span>
+            <span style={{ background: '#e0f2fe', color: '#0284c7', padding: '2px 8px', borderRadius: 99, fontSize: '0.7rem', fontWeight: 800 }}>Company TEC</span>
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#0f172a', margin: '8px 0 4px' }}>
-            ₹42.80 <span style={{ fontSize: '1rem', color: '#64748b', fontWeight: 600 }}>Lakhs / yr</span>
+          <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0f172a', margin: '6px 0 2px' }}>
+            ₹42.80 <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>Lakhs / yr</span>
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+          <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
             Monthly ₹3,56,667 | Basic ₹21.40L
           </div>
         </div>
 
         {/* Employer NPS Section 80CCD(2) Exemption */}
-        <div style={{ background: '#ffffff', borderRadius: 20, padding: '20px', border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+        <div style={{ background: '#ffffff', borderRadius: 18, padding: '18px', border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>Employer NPS (80CCD(2))</span>
-            <span style={{ background: '#dcfce7', color: '#16a34a', padding: '3px 10px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 800 }}>Exempt in New Regime</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b' }}>Employer NPS (80CCD(2))</span>
+            <span style={{ background: '#dcfce7', color: '#16a34a', padding: '2px 8px', borderRadius: 99, fontSize: '0.7rem', fontWeight: 800 }}>Exempt in New Regime</span>
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#047857', margin: '8px 0 4px' }}>
-            ₹85,596 <span style={{ fontSize: '1rem', color: '#64748b', fontWeight: 600 }}>/ yr</span>
+          <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#047857', margin: '6px 0 2px' }}>
+            ₹85,596 <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: 600 }}>/ yr</span>
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#047857', fontWeight: 700 }}>
+          <div style={{ fontSize: '0.76rem', color: '#047857', fontWeight: 700 }}>
             4% of Basic (₹7,133/mo) | PRAN: 110128446556
           </div>
         </div>
 
         {/* Estimated Tax Liability (New Regime) */}
-        <div style={{ background: '#ffffff', borderRadius: 20, padding: '20px', border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+        <div style={{ background: '#ffffff', borderRadius: 18, padding: '18px', border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>Tax Liability (New Regime)</span>
-            <span style={{ background: '#fef3c7', color: '#d97706', padding: '3px 10px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 800 }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b' }}>Tax Liability (New Regime)</span>
+            <span style={{ background: '#fef3c7', color: '#d97706', padding: '2px 8px', borderRadius: 99, fontSize: '0.7rem', fontWeight: 800 }}>
               Opted New Regime
             </span>
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#0f172a', margin: '8px 0 4px' }}>
+          <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0f172a', margin: '6px 0 2px' }}>
             ₹{calculations.newRegimeTax.toLocaleString('en-IN')}
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#16a34a', fontWeight: 700 }}>
+          <div style={{ fontSize: '0.76rem', color: '#16a34a', fontWeight: 700 }}>
             New Regime saves ₹{calculations.taxSavings.toLocaleString('en-IN')} vs Old Regime
           </div>
         </div>
 
         {/* Total TDS & Prepaid Tax */}
-        <div style={{ background: '#ffffff', borderRadius: 20, padding: '20px', border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+        <div style={{ background: '#ffffff', borderRadius: 18, padding: '18px', border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>Prepaid Tax (TDS + Adv Tax)</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b' }}>Prepaid Tax (TDS + Adv Tax)</span>
             <span style={{
               background: calculations.netTaxPayableOrRefund <= 0 ? '#dcfce7' : '#fee2e2',
               color: calculations.netTaxPayableOrRefund <= 0 ? '#16a34a' : '#dc2626',
-              padding: '3px 10px',
+              padding: '2px 8px',
               borderRadius: 99,
-              fontSize: '0.72rem',
+              fontSize: '0.7rem',
               fontWeight: 800
             }}>
               {calculations.netTaxPayableOrRefund <= 0 ? '✓ REFUND DUE' : '🚨 PAYABLE'}
             </span>
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#0f172a', margin: '8px 0 4px' }}>
+          <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0f172a', margin: '6px 0 2px' }}>
             ₹{calculations.totalPrepaidTax.toLocaleString('en-IN')}
           </div>
-          <div style={{ fontSize: '0.78rem', color: calculations.netTaxPayableOrRefund <= 0 ? '#16a34a' : '#dc2626', fontWeight: 700 }}>
+          <div style={{ fontSize: '0.76rem', color: calculations.netTaxPayableOrRefund <= 0 ? '#16a34a' : '#dc2626', fontWeight: 700 }}>
             {calculations.netTaxPayableOrRefund <= 0
               ? `Estimated Refund: ₹${Math.abs(calculations.netTaxPayableOrRefund).toLocaleString('en-IN')}`
               : `Balance Due: ₹${calculations.netTaxPayableOrRefund.toLocaleString('en-IN')}`}
@@ -629,140 +636,140 @@ export default function TaxTracker({ user, isAuthorized }) {
       </div>
 
       {/* ── Sub-Navigation Tabs ── */}
-      <div style={{ display: 'flex', gap: 12, borderBottom: '2px solid #e2e8f0', paddingBottom: 8, overflowX: 'auto' }}>
+      <div style={{ display: 'flex', gap: 10, borderBottom: '2px solid #e2e8f0', paddingBottom: 8, overflowX: 'auto' }}>
         <button
           onClick={() => setActiveTab('simulator')}
           style={{
-            padding: '10px 18px',
+            padding: '9px 16px',
             borderRadius: 12,
             border: 'none',
             background: activeTab === 'simulator' ? '#047857' : 'transparent',
             color: activeTab === 'simulator' ? '#ffffff' : '#64748b',
             fontWeight: 800,
-            fontSize: '0.88rem',
+            fontSize: '0.85rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: 6,
             whiteSpace: 'nowrap'
           }}
         >
-          <Sliders size={16} /> Interactive Tax Simulator & Scenario Planner
+          <Sliders size={15} /> Interactive Tax Simulator & Scenario Planner
         </button>
 
         <button
           onClick={() => setActiveTab('tec')}
           style={{
-            padding: '10px 18px',
+            padding: '9px 16px',
             borderRadius: 12,
             border: 'none',
             background: activeTab === 'tec' ? '#047857' : 'transparent',
             color: activeTab === 'tec' ? '#ffffff' : '#64748b',
             fontWeight: 800,
-            fontSize: '0.88rem',
+            fontSize: '0.85rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: 6,
             whiteSpace: 'nowrap'
           }}
         >
-          <Building size={16} /> Official HGS TEC Breakdown
+          <Building size={15} /> Official HGS TEC Breakdown
         </button>
 
         <button
           onClick={() => setActiveTab('regime')}
           style={{
-            padding: '10px 18px',
+            padding: '9px 16px',
             borderRadius: 12,
             border: 'none',
             background: activeTab === 'regime' ? '#047857' : 'transparent',
             color: activeTab === 'regime' ? '#ffffff' : '#64748b',
             fontWeight: 800,
-            fontSize: '0.88rem',
+            fontSize: '0.85rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: 6,
             whiteSpace: 'nowrap'
           }}
         >
-          <Calculator size={16} /> Old vs New Regime Comparison
+          <Calculator size={15} /> Old vs New Regime Comparison
         </button>
 
         <button
           onClick={() => setActiveTab('deductions')}
           style={{
-            padding: '10px 18px',
+            padding: '9px 16px',
             borderRadius: 12,
             border: 'none',
             background: activeTab === 'deductions' ? '#047857' : 'transparent',
             color: activeTab === 'deductions' ? '#ffffff' : '#64748b',
             fontWeight: 800,
-            fontSize: '0.88rem',
+            fontSize: '0.85rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: 6,
             whiteSpace: 'nowrap'
           }}
         >
-          <ShieldCheck size={16} /> Deductions Vault (80C, 80D, Sec 24)
+          <ShieldCheck size={15} /> Deductions Vault (80C, 80D, Sec 24)
         </button>
 
         <button
           onClick={() => setActiveTab('income')}
           style={{
-            padding: '10px 18px',
+            padding: '9px 16px',
             borderRadius: 12,
             border: 'none',
             background: activeTab === 'income' ? '#047857' : 'transparent',
             color: activeTab === 'income' ? '#ffffff' : '#64748b',
             fontWeight: 800,
-            fontSize: '0.88rem',
+            fontSize: '0.85rem',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: 6,
             whiteSpace: 'nowrap'
           }}
         >
-          <Briefcase size={16} /> Salary & Income
+          <Briefcase size={15} /> Salary & Income
         </button>
       </div>
 
       {/* ── TAB: TAX SIMULATOR & WHAT-IF SCENARIO PLANNER ── */}
       {activeTab === 'simulator' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 400px', gap: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
           {/* Left Sliders & Preset Selector */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             {/* Presets */}
-            <div style={{ background: '#ffffff', borderRadius: 20, padding: 20, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 12 }}>
+            <div style={{ background: '#ffffff', borderRadius: 18, padding: 18, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+              <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 10 }}>
                 ⚡ Quick Preset Scenarios
               </span>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
                   onClick={() => handleApplyPreset('current')}
-                  style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#f8fafc', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}
+                  style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#f8fafc', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}
                 >
                   🏢 Current HGS Plan (₹40.2L + 4% NPS)
                 </button>
                 <button
                   onClick={() => handleApplyPreset('hike')}
-                  style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#047857', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}
+                  style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#047857', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}
                 >
                   🚀 +15% Salary Hike (₹46L + 6% NPS)
                 </button>
                 <button
                   onClick={() => handleApplyPreset('max')}
-                  style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #e9d5ff', background: '#faf5ff', color: '#7e22ce', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}
+                  style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #e9d5ff', background: '#faf5ff', color: '#7e22ce', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}
                 >
                   🛡️ Max Old Regime Deductions
                 </button>
                 <button
                   onClick={() => handleApplyPreset('zero')}
-                  style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid #fed7aa', background: '#fff7ed', color: '#c2410c', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}
+                  style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #fed7aa', background: '#fff7ed', color: '#c2410c', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}
                 >
                   ⚡ Pure New Regime (Zero Investments)
                 </button>
@@ -770,14 +777,14 @@ export default function TaxTracker({ user, isAuthorized }) {
             </div>
 
             {/* Sliders Input Card */}
-            <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>"What-If" Financial Controls</h3>
+            <div style={{ background: '#ffffff', borderRadius: 18, padding: 22, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>"What-If" Financial Controls</h3>
 
               {/* Slider 1: Gross Annual Salary */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>Gross Annual Salary / Package</label>
-                  <strong style={{ fontSize: '0.95rem', color: '#047857' }}>₹{(simGrossSalary / 100000).toFixed(2)} Lakhs</strong>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Gross Annual Salary / Package</label>
+                  <strong style={{ fontSize: '0.9rem', color: '#047857' }}>₹{(simGrossSalary / 100000).toFixed(2)} Lakhs</strong>
                 </div>
                 <input
                   type="range"
@@ -792,9 +799,9 @@ export default function TaxTracker({ user, isAuthorized }) {
 
               {/* Slider 2: Employer NPS % (Sec 80CCD(2)) */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>Employer NPS % (Sec 80CCD(2))</label>
-                  <strong style={{ fontSize: '0.95rem', color: '#8b5cf6' }}>{simNpsPercent}% of Basic (₹{simResults.employerNpsAmt.toLocaleString('en-IN')})</strong>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Employer NPS % (Sec 80CCD(2))</label>
+                  <strong style={{ fontSize: '0.9rem', color: '#8b5cf6' }}>{simNpsPercent}% of Basic (₹{simResults.employerNpsAmt.toLocaleString('en-IN')})</strong>
                 </div>
                 <input
                   type="range"
@@ -805,14 +812,14 @@ export default function TaxTracker({ user, isAuthorized }) {
                   onChange={e => setSimNpsPercent(Number(e.target.value))}
                   style={{ width: '100%', accentColor: '#8b5cf6' }}
                 />
-                <span style={{ fontSize: '0.74rem', color: '#64748b' }}>Exempt under both Old & New Tax Regimes!</span>
+                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Exempt under both Old & New Tax Regimes!</span>
               </div>
 
               {/* Slider 3: Section 80C */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>Section 80C (PPF, EPF, ELSS, Tuition)</label>
-                  <strong style={{ fontSize: '0.95rem', color: '#0284c7' }}>₹{simSec80C.toLocaleString('en-IN')}</strong>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Section 80C (PPF, EPF, ELSS, Tuition)</label>
+                  <strong style={{ fontSize: '0.9rem', color: '#0284c7' }}>₹{simSec80C.toLocaleString('en-IN')}</strong>
                 </div>
                 <input
                   type="range"
@@ -827,9 +834,9 @@ export default function TaxTracker({ user, isAuthorized }) {
 
               {/* Slider 4: Section 80D Health Insurance */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>Section 80D Health Insurance</label>
-                  <strong style={{ fontSize: '0.95rem', color: '#0284c7' }}>₹{simSec80D.toLocaleString('en-IN')}</strong>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Section 80D Health Insurance</label>
+                  <strong style={{ fontSize: '0.9rem', color: '#0284c7' }}>₹{simSec80D.toLocaleString('en-IN')}</strong>
                 </div>
                 <input
                   type="range"
@@ -844,9 +851,9 @@ export default function TaxTracker({ user, isAuthorized }) {
 
               {/* Slider 5: Section 80CCD(1B) Self NPS */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>Section 80CCD(1B) Additional NPS</label>
-                  <strong style={{ fontSize: '0.95rem', color: '#0284c7' }}>₹{simSec80CCD1B.toLocaleString('en-IN')}</strong>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Section 80CCD(1B) Additional NPS</label>
+                  <strong style={{ fontSize: '0.9rem', color: '#0284c7' }}>₹{simSec80CCD1B.toLocaleString('en-IN')}</strong>
                 </div>
                 <input
                   type="range"
@@ -861,9 +868,9 @@ export default function TaxTracker({ user, isAuthorized }) {
 
               {/* Slider 6: Section 24(b) Home Loan Interest */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>Section 24(b) Home Loan Interest</label>
-                  <strong style={{ fontSize: '0.95rem', color: '#0284c7' }}>₹{simSec24b.toLocaleString('en-IN')}</strong>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Section 24(b) Home Loan Interest</label>
+                  <strong style={{ fontSize: '0.9rem', color: '#0284c7' }}>₹{simSec24b.toLocaleString('en-IN')}</strong>
                 </div>
                 <input
                   type="range"
@@ -878,9 +885,9 @@ export default function TaxTracker({ user, isAuthorized }) {
 
               {/* Slider 7: Section 10(13A) HRA Exemption */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <label style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>HRA Rent Exemption (Annual)</label>
-                  <strong style={{ fontSize: '0.95rem', color: '#0284c7' }}>₹{simHraExemption.toLocaleString('en-IN')}</strong>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>HRA Rent Exemption (Annual)</label>
+                  <strong style={{ fontSize: '0.9rem', color: '#0284c7' }}>₹{simHraExemption.toLocaleString('en-IN')}</strong>
                 </div>
                 <input
                   type="range"
@@ -899,55 +906,53 @@ export default function TaxTracker({ user, isAuthorized }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             <div style={{
               background: 'linear-gradient(135deg, #0f172a 0%, #047857 100%)',
-              borderRadius: 24,
-              padding: 26,
+              borderRadius: 22,
+              padding: 22,
               color: '#ffffff',
-              boxShadow: '0 12px 32px rgba(4, 120, 87, 0.25)',
-              position: 'sticky',
-              top: 20
+              boxShadow: '0 12px 32px rgba(4, 120, 87, 0.25)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Sparkles size={22} color="#fef08a" />
-                  <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>Simulated Output</h4>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Sparkles size={20} color="#fef08a" />
+                  <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900 }}>Simulated Output</h4>
                 </div>
-                <span style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', padding: '4px 12px', borderRadius: 99, fontSize: '0.76rem', fontWeight: 800 }}>
+                <span style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', padding: '3px 10px', borderRadius: 99, fontSize: '0.74rem', fontWeight: 800 }}>
                   {simResults.winnerRegime} REGIME WINS 🏆
                 </span>
               </div>
 
               {/* Key numbers */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: 16, borderRadius: 16 }}>
-                  <span style={{ fontSize: '0.76rem', color: '#a7f3d0', textTransform: 'uppercase', fontWeight: 700 }}>Simulated Monthly In-Hand Salary</span>
-                  <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#ffffff', marginTop: 2 }}>
-                    ₹{simResults.monthlyTakeHome.toLocaleString('en-IN')} <span style={{ fontSize: '0.9rem', color: '#a7f3d0' }}>/ month</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: 14, borderRadius: 14 }}>
+                  <span style={{ fontSize: '0.74rem', color: '#a7f3d0', textTransform: 'uppercase', fontWeight: 700 }}>Simulated Monthly In-Hand Salary</span>
+                  <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#ffffff', marginTop: 2 }}>
+                    ₹{simResults.monthlyTakeHome.toLocaleString('en-IN')} <span style={{ fontSize: '0.85rem', color: '#a7f3d0' }}>/ month</span>
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: 12, borderRadius: 12 }}>
-                    <span style={{ fontSize: '0.7rem', color: '#cbd5e1' }}>New Regime Tax</span>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 900, color: simResults.winnerRegime === 'NEW' ? '#34d399' : '#ffffff' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: 10, borderRadius: 10 }}>
+                    <span style={{ fontSize: '0.68rem', color: '#cbd5e1' }}>New Regime Tax</span>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 900, color: simResults.winnerRegime === 'NEW' ? '#34d399' : '#ffffff' }}>
                       ₹{simResults.newTax.toLocaleString('en-IN')}
                     </div>
                   </div>
-                  <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: 12, borderRadius: 12 }}>
-                    <span style={{ fontSize: '0.7rem', color: '#cbd5e1' }}>Old Regime Tax</span>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 900, color: simResults.winnerRegime === 'OLD' ? '#34d399' : '#ffffff' }}>
+                  <div style={{ background: 'rgba(255, 255, 255, 0.08)', padding: 10, borderRadius: 10 }}>
+                    <span style={{ fontSize: '0.68rem', color: '#cbd5e1' }}>Old Regime Tax</span>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 900, color: simResults.winnerRegime === 'OLD' ? '#34d399' : '#ffffff' }}>
                       ₹{simResults.oldTax.toLocaleString('en-IN')}
                     </div>
                   </div>
                 </div>
 
-                <div style={{ background: 'rgba(254, 240, 138, 0.15)', border: '1px solid rgba(254, 240, 138, 0.3)', padding: 14, borderRadius: 14 }}>
-                  <span style={{ fontSize: '0.76rem', color: '#fef08a', fontWeight: 800 }}>TAX SAVINGS</span>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#fef08a', marginTop: 2 }}>
+                <div style={{ background: 'rgba(254, 240, 138, 0.15)', border: '1px solid rgba(254, 240, 138, 0.3)', padding: 12, borderRadius: 12 }}>
+                  <span style={{ fontSize: '0.74rem', color: '#fef08a', fontWeight: 800 }}>TAX SAVINGS</span>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#fef08a', marginTop: 2 }}>
                     ₹{simResults.savings.toLocaleString('en-IN')} Saved via {simResults.winnerRegime} Regime
                   </div>
                 </div>
 
-                <div style={{ fontSize: '0.78rem', color: '#cbd5e1', lineHeight: 1.5, marginTop: 4 }}>
+                <div style={{ fontSize: '0.76rem', color: '#cbd5e1', lineHeight: 1.5, marginTop: 2 }}>
                   💡 <strong>Break-Even Insight:</strong> Total Old Regime Deductions simulated: <strong>₹{simResults.totalOldDeductions.toLocaleString('en-IN')}</strong>. Employer NPS 80CCD(2) gives an extra tax exemption of <strong>₹{simResults.employerNpsAmt.toLocaleString('en-IN')}</strong> even under the New Regime.
                 </div>
               </div>
@@ -959,75 +964,75 @@ export default function TaxTracker({ user, isAuthorized }) {
       {/* ── TAB: OFFICIAL HGS TEC COMPENSATION BREAKDOWN ── */}
       {activeTab === 'tec' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+          <div style={{ background: '#ffffff', borderRadius: 20, padding: 22, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14, marginBottom: 18 }}>
               <div>
-                <span style={{ background: '#e0f2fe', color: '#0284c7', padding: '4px 12px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 800 }}>Employer Declaration</span>
-                <h3 style={{ margin: '8px 0 0', fontSize: '1.2rem', fontWeight: 900, color: '#0f172a' }}>
+                <span style={{ background: '#e0f2fe', color: '#0284c7', padding: '3px 10px', borderRadius: 8, fontSize: '0.74rem', fontWeight: 800 }}>Employer Declaration</span>
+                <h3 style={{ margin: '6px 0 0', fontSize: '1.15rem', fontWeight: 900, color: '#0f172a' }}>
                   {OFFICIAL_TEC_STRUCTURE.employer}
                 </h3>
-                <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: '#64748b' }}>
+                <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
                   Total Employment Cost (TEC) Plan — Financial Year Basis (April to March)
                 </p>
               </div>
 
-              <div style={{ display: 'flex', gap: 12 }}>
-                <span style={{ background: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0', padding: '6px 14px', borderRadius: 12, fontSize: '0.84rem', fontWeight: 800 }}>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <span style={{ background: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0', padding: '5px 12px', borderRadius: 10, fontSize: '0.8rem', fontWeight: 800 }}>
                   You have opted NEW REGIME
                 </span>
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, background: '#f8fafc', padding: 18, borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, background: '#f8fafc', padding: 16, borderRadius: 14, border: '1px solid #e2e8f0', marginBottom: 18 }}>
               <div>
-                <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>MEAL CARD</span>
-                <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0f172a', marginTop: 2 }}>₹4,800 / mo <span style={{ fontSize: '0.78rem', color: '#64748b' }}>(₹57,600 / yr)</span></div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 2 }}>From Date: 01/07/2026</div>
+                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>MEAL CARD</span>
+                <div style={{ fontSize: '1rem', fontWeight: 900, color: '#0f172a', marginTop: 2 }}>₹4,800 / mo <span style={{ fontSize: '0.74rem', color: '#64748b' }}>(₹57,600 / yr)</span></div>
+                <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 2 }}>From Date: 01/07/2026</div>
               </div>
               <div>
-                <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>NPS in % (Sec 80CCD(2))</span>
-                <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#047857', marginTop: 2 }}>4% = ₹7,133 / mo <span style={{ fontSize: '0.78rem', color: '#64748b' }}>(₹85,596 / yr)</span></div>
-                <div style={{ fontSize: '0.72rem', color: '#047857', fontWeight: 700, marginTop: 2 }}>Exempt in New Regime ✓</div>
+                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>NPS in % (Sec 80CCD(2))</span>
+                <div style={{ fontSize: '1rem', fontWeight: 900, color: '#047857', marginTop: 2 }}>4% = ₹7,133 / mo <span style={{ fontSize: '0.74rem', color: '#64748b' }}>(₹85,596 / yr)</span></div>
+                <div style={{ fontSize: '0.7rem', color: '#047857', fontWeight: 700, marginTop: 2 }}>Exempt in New Regime ✓</div>
               </div>
               <div>
-                <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>PRAN NO</span>
-                <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#8b5cf6', marginTop: 2 }}>110128446556</div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 2 }}>National Pension System Tier 1</div>
+                <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>PRAN NO</span>
+                <div style={{ fontSize: '1rem', fontWeight: 900, color: '#8b5cf6', marginTop: 2 }}>110128446556</div>
+                <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: 2 }}>National Pension System Tier 1</div>
               </div>
             </div>
 
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
                 <thead>
-                  <tr style={{ background: '#475569', color: '#ffffff', textTransform: 'uppercase', fontSize: '0.74rem', letterSpacing: '0.04em' }}>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', borderRadius: '8px 0 0 8px' }}>Compensation Component</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Monthly Amount (₹)</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right', borderRadius: '0 8px 8px 0' }}>Annual Amount (₹)</th>
+                  <tr style={{ background: '#475569', color: '#ffffff', textTransform: 'uppercase', fontSize: '0.72rem', letterSpacing: '0.04em' }}>
+                    <th style={{ padding: '10px 14px', textAlign: 'left', borderRadius: '8px 0 0 8px' }}>Compensation Component</th>
+                    <th style={{ padding: '10px 14px', textAlign: 'right' }}>Monthly Amount (₹)</th>
+                    <th style={{ padding: '10px 14px', textAlign: 'right', borderRadius: '0 8px 8px 0' }}>Annual Amount (₹)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {OFFICIAL_TEC_STRUCTURE.components.map((c, idx) => (
                     <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
-                      <td style={{ padding: '14px 16px', fontWeight: 700, color: '#0f172a' }}>
+                      <td style={{ padding: '12px 14px', fontWeight: 700, color: '#0f172a' }}>
                         {c.name}
-                        {c.type === 'NPS' && <span style={{ marginLeft: 8, background: '#dcfce7', color: '#16a34a', padding: '2px 8px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 800 }}>80CCD(2) Exempt</span>}
+                        {c.type === 'NPS' && <span style={{ marginLeft: 6, background: '#dcfce7', color: '#16a34a', padding: '2px 6px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 800 }}>80CCD(2) Exempt</span>}
                       </td>
-                      <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: '#334155' }}>
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: '#334155' }}>
                         ₹{c.monthly.toLocaleString('en-IN')}
                       </td>
-                      <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
                         ₹{c.annual.toLocaleString('en-IN')}
                       </td>
                     </tr>
                   ))}
                   <tr style={{ background: '#0f172a', color: '#ffffff' }}>
-                    <td style={{ padding: '16px', fontWeight: 900, fontSize: '1rem', borderRadius: '0 0 0 12px' }}>
+                    <td style={{ padding: '14px 16px', fontWeight: 900, fontSize: '0.95rem', borderRadius: '0 0 0 10px' }}>
                       TEC (Total Employment Cost)
                     </td>
-                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 900, fontSize: '1rem', color: '#34d399' }}>
+                    <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 900, fontSize: '0.95rem', color: '#34d399' }}>
                       ₹{OFFICIAL_TEC_STRUCTURE.totalMonthly.toLocaleString('en-IN')}
                     </td>
-                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 900, fontSize: '1.1rem', color: '#34d399', borderRadius: '0 0 12px 0' }}>
+                    <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 900, fontSize: '1.05rem', color: '#34d399', borderRadius: '0 0 10px 0' }}>
                       ₹{OFFICIAL_TEC_STRUCTURE.totalAnnual.toLocaleString('en-IN')}
                     </td>
                   </tr>
@@ -1040,21 +1045,21 @@ export default function TaxTracker({ user, isAuthorized }) {
 
       {/* ── TAB 1: OLD VS NEW REGIME COMPARISON ── */}
       {activeTab === 'regime' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px', gap: 24 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ background: '#ffffff', borderRadius: 18, padding: 20, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>Old Regime vs New Regime Breakdown</h3>
-                  <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#64748b' }}>Comparing deductions, taxable income & final tax burden</p>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Old Regime vs New Regime Breakdown</h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748b' }}>Comparing deductions, taxable income & final tax burden</p>
                 </div>
               </div>
 
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={regimeComparisonChart} barSize={36} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={regimeComparisonChart} barSize={32} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 10 }} />
                   <Tooltip formatter={(v) => [`₹${Number(v).toLocaleString('en-IN')}`, 'Amount']} />
                   <Legend />
                   <Bar dataKey="Old Regime" fill="#0284c7" radius={[6, 6, 0, 0]} />
@@ -1063,67 +1068,67 @@ export default function TaxTracker({ user, isAuthorized }) {
               </ResponsiveContainer>
             </div>
 
-            <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
-              <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>Detailed Side-by-Side Tax Computation</h3>
+            <div style={{ background: '#ffffff', borderRadius: 18, padding: 20, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+              <h3 style={{ margin: '0 0 14px', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Detailed Side-by-Side Tax Computation</h3>
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead>
-                    <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.72rem', color: '#64748b', letterSpacing: '0.04em' }}>
-                      <th style={{ padding: '12px 14px', textAlign: 'left' }}>Tax Heads / Components</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right' }}>Old Tax Regime</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right' }}>New Tax Regime (Opted ✓)</th>
+                    <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.7rem', color: '#64748b', letterSpacing: '0.04em' }}>
+                      <th style={{ padding: '10px 12px', textAlign: 'left' }}>Tax Heads / Components</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right' }}>Old Tax Regime</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right' }}>New Tax Regime (Opted ✓)</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px', fontWeight: 700, color: '#0f172a' }}>Gross Annual Salary & Other Income</td>
-                      <td style={{ padding: '14px', textAlign: 'right', fontWeight: 700 }}>₹{calculations.totalGrossIncome.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right', fontWeight: 700 }}>₹{calculations.totalGrossIncome.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', fontWeight: 700, color: '#0f172a' }}>Gross Annual Salary & Other Income</td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700 }}>₹{calculations.totalGrossIncome.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700 }}>₹{calculations.totalGrossIncome.toLocaleString('en-IN')}</td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px', color: '#475569' }}>Standard Deduction</td>
-                      <td style={{ padding: '14px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹50,000</td>
-                      <td style={{ padding: '14px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹75,000</td>
+                      <td style={{ padding: '12px', color: '#475569' }}>Standard Deduction</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹50,000</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹75,000</td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px', color: '#475569' }}>Employer NPS Contribution Sec 80CCD(2) Exemption</td>
-                      <td style={{ padding: '14px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.sec80CCD2.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.sec80CCD2.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', color: '#475569' }}>Employer NPS Contribution Sec 80CCD(2) Exemption</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.sec80CCD2.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.sec80CCD2.toLocaleString('en-IN')}</td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px', color: '#475569' }}>Section 80C Deductions (PPF, EPF, ELSS, Tuition)</td>
-                      <td style={{ padding: '14px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.sec80C_Claimed.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right', color: '#94a3b8' }}>N/A</td>
+                      <td style={{ padding: '12px', color: '#475569' }}>Section 80C Deductions (PPF, EPF, ELSS, Tuition)</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.sec80C_Claimed.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#94a3b8' }}>N/A</td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px', color: '#475569' }}>Section 80D Health Insurance (Family + Parents)</td>
-                      <td style={{ padding: '14px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.sec80D.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right', color: '#94a3b8' }}>N/A</td>
+                      <td style={{ padding: '12px', color: '#475569' }}>Section 80D Health Insurance (Family + Parents)</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.sec80D.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#94a3b8' }}>N/A</td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px', color: '#475569' }}>Section 80CCD(1B) NPS Additional Deduction</td>
-                      <td style={{ padding: '14px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.sec80CCD_Claimed.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right', color: '#94a3b8' }}>N/A</td>
+                      <td style={{ padding: '12px', color: '#475569' }}>Section 80CCD(1B) NPS Additional Deduction</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.sec80CCD_Claimed.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#94a3b8' }}>N/A</td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px', color: '#475569' }}>Section 24(b) Home Loan Interest Exemption</td>
-                      <td style={{ padding: '14px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.sec24b_Claimed.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right', color: '#94a3b8' }}>N/A</td>
+                      <td style={{ padding: '12px', color: '#475569' }}>Section 24(b) Home Loan Interest Exemption</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.sec24b_Claimed.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#94a3b8' }}>N/A</td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px', color: '#475569' }}>Section 10(13A) HRA Rent Exemption</td>
-                      <td style={{ padding: '14px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.hra.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right', color: '#94a3b8' }}>N/A</td>
+                      <td style={{ padding: '12px', color: '#475569' }}>Section 10(13A) HRA Rent Exemption</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.hra.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', color: '#94a3b8' }}>N/A</td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
-                      <td style={{ padding: '14px', fontWeight: 800, color: '#0f172a' }}>Net Taxable Income</td>
-                      <td style={{ padding: '14px', textAlign: 'right', fontWeight: 900, color: '#0f172a' }}>₹{calculations.oldRegimeTaxable.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right', fontWeight: 900, color: '#0f172a' }}>₹{Math.max(calculations.totalGrossIncome - 75000 - calculations.sec80CCD2, 0).toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', fontWeight: 800, color: '#0f172a' }}>Net Taxable Income</td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, color: '#0f172a' }}>₹{calculations.oldRegimeTaxable.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, color: '#0f172a' }}>₹{Math.max(calculations.totalGrossIncome - 75000 - calculations.sec80CCD2, 0).toLocaleString('en-IN')}</td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid #f1f5f9', background: '#ecfdf5' }}>
-                      <td style={{ padding: '14px', fontWeight: 900, color: '#047857', fontSize: '0.95rem' }}>Total Income Tax Payable (Incl. 4% Cess)</td>
-                      <td style={{ padding: '14px', textAlign: 'right', fontWeight: 900, color: '#0f172a', fontSize: '1rem' }}>₹{calculations.oldRegimeTax.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right', fontWeight: 900, color: '#047857', fontSize: '1rem' }}>₹{calculations.newRegimeTax.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', fontWeight: 900, color: '#047857', fontSize: '0.9rem' }}>Total Income Tax Payable (Incl. 4% Cess)</td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, color: '#0f172a', fontSize: '0.95rem' }}>₹{calculations.oldRegimeTax.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, color: '#047857', fontSize: '0.95rem' }}>₹{calculations.newRegimeTax.toLocaleString('en-IN')}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1135,24 +1140,22 @@ export default function TaxTracker({ user, isAuthorized }) {
             <div style={{
               background: 'linear-gradient(135deg, #047857 0%, #064e3b 100%)',
               borderRadius: 20,
-              padding: 24,
+              padding: 20,
               color: '#ffffff',
-              boxShadow: '0 8px 24px rgba(4, 120, 87, 0.25)',
-              position: 'sticky',
-              top: 20
+              boxShadow: '0 8px 24px rgba(4, 120, 87, 0.25)'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                <Sparkles size={22} color="#fef08a" />
-                <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Regime Advisor</h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                <Sparkles size={20} color="#fef08a" />
+                <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>Regime Advisor</h4>
               </div>
 
-              <p style={{ fontSize: '0.88rem', color: '#a7f3d0', lineHeight: 1.5 }}>
+              <p style={{ fontSize: '0.84rem', color: '#a7f3d0', lineHeight: 1.5 }}>
                 Your company declaration shows <strong>NEW TAX REGIME OPTED</strong>. Under New Regime, your Employer NPS contribution of <strong>₹85,596 (Sec 80CCD(2))</strong> remains completely tax-exempt!
               </p>
 
-              <div style={{ margin: '16px 0', borderTop: '1px dashed rgba(255, 255, 255, 0.2)' }} />
+              <div style={{ margin: '14px 0', borderTop: '1px dashed rgba(255, 255, 255, 0.2)' }} />
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.84rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.82rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Total TDS Deducted</span>
                   <strong>₹{calculations.totalTDS.toLocaleString('en-IN')}</strong>
@@ -1161,7 +1164,7 @@ export default function TaxTracker({ user, isAuthorized }) {
                   <span>Advance Tax Paid</span>
                   <strong>₹{calculations.totalAdvanceTax.toLocaleString('en-IN')}</strong>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', fontWeight: 800, color: '#fef08a' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 800, color: '#fef08a' }}>
                   <span>Net Refund / Balance</span>
                   <span>{calculations.netTaxPayableOrRefund <= 0 ? `+ ₹${Math.abs(calculations.netTaxPayableOrRefund).toLocaleString('en-IN')} Refund` : `- ₹${calculations.netTaxPayableOrRefund.toLocaleString('en-IN')} Due`}</span>
                 </div>
@@ -1174,17 +1177,17 @@ export default function TaxTracker({ user, isAuthorized }) {
       {/* ── TAB 2: DEDUCTIONS VAULT ── */}
       {activeTab === 'deductions' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ background: '#ffffff', borderRadius: 18, padding: 20, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <div>
-                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>Section 80C Limit Utilization</h4>
-                <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#64748b' }}>EPF, PPF, ELSS Mutual Funds, School Tuition Fees</p>
+                <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#0f172a' }}>Section 80C Limit Utilization</h4>
+                <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748b' }}>EPF, PPF, ELSS Mutual Funds, School Tuition Fees</p>
               </div>
-              <span style={{ fontWeight: 900, color: '#047857', fontSize: '1.1rem' }}>
+              <span style={{ fontWeight: 900, color: '#047857', fontSize: '1.05rem' }}>
                 ₹{calculations.sec80C_Claimed.toLocaleString('en-IN')} / ₹1,50,000
               </span>
             </div>
-            <div style={{ width: '100%', height: 12, background: '#f1f5f9', borderRadius: 99, overflow: 'hidden' }}>
+            <div style={{ width: '100%', height: 10, background: '#f1f5f9', borderRadius: 99, overflow: 'hidden' }}>
               <div style={{
                 width: `${Math.min((calculations.sec80C_Claimed / 150000) * 100, 100)}%`,
                 height: '100%',
@@ -1194,66 +1197,66 @@ export default function TaxTracker({ user, isAuthorized }) {
             </div>
           </div>
 
-          <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Tax Savings & Exemptions Vault</h3>
-              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>{taxData.deductions.length} Deductions Logged</span>
+          <div style={{ background: '#ffffff', borderRadius: 18, padding: 20, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>Tax Savings & Exemptions Vault</h3>
+              <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 600 }}>{safeData.deductions.length} Deductions Logged</span>
             </div>
 
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
-                  <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.72rem', color: '#64748b', letterSpacing: '0.04em' }}>
-                    <th style={{ padding: '12px 14px', textAlign: 'left', borderRadius: '8px 0 0 8px' }}>Section</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'left' }}>Deduction Category</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'left' }}>Earner</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>Amount Claimed</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'center' }}>Proof Status</th>
-                    {isAuthorized && <th style={{ padding: '12px 14px', textAlign: 'center', borderRadius: '0 8px 8px 0' }}>Action</th>}
+                  <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.7rem', color: '#64748b', letterSpacing: '0.04em' }}>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', borderRadius: '6px 0 0 6px' }}>Section</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left' }}>Deduction Category</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left' }}>Earner</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Amount Claimed</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center' }}>Proof Status</th>
+                    {isAuthorized && <th style={{ padding: '10px 12px', textAlign: 'center', borderRadius: '0 6px 6px 0' }}>Action</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {taxData.deductions.map(d => (
+                  {safeData.deductions.map(d => (
                     <tr key={d.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px' }}>
+                      <td style={{ padding: '12px' }}>
                         <span style={{
                           background: '#ecfdf5',
                           color: '#047857',
-                          padding: '4px 10px',
-                          borderRadius: 8,
+                          padding: '3px 8px',
+                          borderRadius: 6,
                           fontWeight: 800,
-                          fontSize: '0.75rem'
+                          fontSize: '0.72rem'
                         }}>
                           {d.section}
                         </span>
                       </td>
-                      <td style={{ padding: '14px' }}>
-                        <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.9rem' }}>{d.category}</div>
-                        {d.notes && <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: 2 }}>{d.notes}</div>}
+                      <td style={{ padding: '12px' }}>
+                        <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.86rem' }}>{d.category}</div>
+                        {d.notes && <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 2 }}>{d.notes}</div>}
                       </td>
-                      <td style={{ padding: '14px', color: '#475569', fontWeight: 600 }}>{d.earner}</td>
-                      <td style={{ padding: '14px', textAlign: 'right', fontWeight: 900, color: '#0f172a', fontSize: '0.95rem' }}>
+                      <td style={{ padding: '12px', color: '#475569', fontWeight: 600 }}>{d.earner}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, color: '#0f172a', fontSize: '0.9rem' }}>
                         ₹{d.amount?.toLocaleString('en-IN')}
                       </td>
-                      <td style={{ padding: '14px', textAlign: 'center' }}>
+                      <td style={{ padding: '12px', textAlign: 'center' }}>
                         <span style={{
                           background: d.proofStatus === 'Verified' ? '#dcfce7' : '#fef3c7',
                           color: d.proofStatus === 'Verified' ? '#16a34a' : '#d97706',
-                          padding: '3px 10px',
+                          padding: '2px 8px',
                           borderRadius: 99,
                           fontWeight: 800,
-                          fontSize: '0.72rem'
+                          fontSize: '0.7rem'
                         }}>
                           {d.proofStatus === 'Verified' ? '✓ Verified' : '⚠️ Pending'}
                         </span>
                       </td>
                       {isAuthorized && (
-                        <td style={{ padding: '14px', textAlign: 'center' }}>
+                        <td style={{ padding: '12px', textAlign: 'center' }}>
                           <button
                             onClick={(e) => handleDeleteDeduction(d.id, e)}
-                            style={{ border: 'none', background: '#fee2e2', color: '#dc2626', padding: '6px 10px', borderRadius: 8, cursor: 'pointer' }}
+                            style={{ border: 'none', background: '#fee2e2', color: '#dc2626', padding: '5px 8px', borderRadius: 6, cursor: 'pointer' }}
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={13} />
                           </button>
                         </td>
                       )}
@@ -1268,32 +1271,32 @@ export default function TaxTracker({ user, isAuthorized }) {
 
       {/* ── TAB 3: SALARY & OTHER INCOME ── */}
       {activeTab === 'income' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Annual Salary & Employer TDS Summary</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ background: '#ffffff', borderRadius: 18, padding: 20, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+            <h3 style={{ margin: '0 0 14px', fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>Annual Salary & Employer TDS Summary</h3>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
-                  <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.72rem', color: '#64748b', letterSpacing: '0.04em' }}>
-                    <th style={{ padding: '12px 14px', textAlign: 'left' }}>Earner</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'left' }}>Company</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>Basic Salary</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>HRA Received</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>Allowances</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>Gross Taxable Salary</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>TDS Deducted</th>
+                  <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.7rem', color: '#64748b', letterSpacing: '0.04em' }}>
+                    <th style={{ padding: '10px 12px', textAlign: 'left' }}>Earner</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left' }}>Company</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Basic Salary</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>HRA Received</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Allowances</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Gross Taxable Salary</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>TDS Deducted</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {taxData.salaries.map(s => (
+                  {safeData.salaries.map(s => (
                     <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px', fontWeight: 800, color: '#0f172a' }}>{s.earner}</td>
-                      <td style={{ padding: '14px', color: '#475569', fontWeight: 600 }}>{s.company || 'Corporate'}</td>
-                      <td style={{ padding: '14px', textAlign: 'right' }}>₹{s.basicSalary?.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right' }}>₹{s.hraReceived?.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right' }}>₹{s.specialAllowance?.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right', fontWeight: 900, color: '#0f172a' }}>₹{s.grossSalary?.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right', fontWeight: 900, color: '#047857' }}>₹{s.tdsDeducted?.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', fontWeight: 800, color: '#0f172a' }}>{s.earner}</td>
+                      <td style={{ padding: '12px', color: '#475569', fontWeight: 600 }}>{s.company || 'Corporate'}</td>
+                      <td style={{ padding: '12px', textAlign: 'right' }}>₹{s.basicSalary?.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right' }}>₹{s.hraReceived?.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right' }}>₹{s.specialAllowance?.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, color: '#0f172a' }}>₹{s.grossSalary?.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, color: '#047857' }}>₹{s.tdsDeducted?.toLocaleString('en-IN')}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1301,29 +1304,29 @@ export default function TaxTracker({ user, isAuthorized }) {
             </div>
           </div>
 
-          <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Other Income & Capital Gains</h3>
+          <div style={{ background: '#ffffff', borderRadius: 18, padding: 20, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+            <h3 style={{ margin: '0 0 14px', fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>Other Income & Capital Gains</h3>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
-                  <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.72rem', color: '#64748b', letterSpacing: '0.04em' }}>
-                    <th style={{ padding: '12px 14px', textAlign: 'left' }}>Income Source</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'left' }}>Category</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>Amount</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>TDS Deducted</th>
+                  <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.7rem', color: '#64748b', letterSpacing: '0.04em' }}>
+                    <th style={{ padding: '10px 12px', textAlign: 'left' }}>Income Source</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left' }}>Category</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Amount</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>TDS Deducted</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {taxData.otherIncome.map(i => (
+                  {safeData.otherIncome.map(i => (
                     <tr key={i.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '14px', fontWeight: 700, color: '#0f172a' }}>{i.source}</td>
-                      <td style={{ padding: '14px' }}>
-                        <span style={{ background: '#f1f5f9', color: '#475569', padding: '3px 10px', borderRadius: 99, fontWeight: 700, fontSize: '0.74rem' }}>
+                      <td style={{ padding: '12px', fontWeight: 700, color: '#0f172a' }}>{i.source}</td>
+                      <td style={{ padding: '12px' }}>
+                        <span style={{ background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: 99, fontWeight: 700, fontSize: '0.72rem' }}>
                           {i.category}
                         </span>
                       </td>
-                      <td style={{ padding: '14px', textAlign: 'right', fontWeight: 800 }}>₹{i.amount?.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right', fontWeight: 800, color: '#047857' }}>₹{i.tdsDeducted?.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800 }}>₹{i.amount?.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, color: '#047857' }}>₹{i.tdsDeducted?.toLocaleString('en-IN')}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1335,40 +1338,40 @@ export default function TaxTracker({ user, isAuthorized }) {
 
       {/* ── TAB 4: ADVANCE TAX DEADLINES ── */}
       {activeTab === 'advance' && (
-        <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
-          <h3 style={{ margin: '0 0 16px', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>Quarterly Advance Tax Payment Schedule</h3>
+        <div style={{ background: '#ffffff', borderRadius: 18, padding: 20, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+          <h3 style={{ margin: '0 0 14px', fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>Quarterly Advance Tax Payment Schedule</h3>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.72rem', color: '#64748b', letterSpacing: '0.04em' }}>
-                  <th style={{ padding: '12px 14px', textAlign: 'left' }}>Quarter / Due Date</th>
-                  <th style={{ padding: '12px 14px', textAlign: 'center' }}>% Due</th>
-                  <th style={{ padding: '12px 14px', textAlign: 'right' }}>Estimated Due</th>
-                  <th style={{ padding: '12px 14px', textAlign: 'right' }}>Paid Amount</th>
-                  <th style={{ padding: '12px 14px', textAlign: 'center' }}>Status</th>
-                  <th style={{ padding: '12px 14px', textAlign: 'left' }}>Challan Ref</th>
+                <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.7rem', color: '#64748b', letterSpacing: '0.04em' }}>
+                  <th style={{ padding: '10px 12px', textAlign: 'left' }}>Quarter / Due Date</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>% Due</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'right' }}>Estimated Due</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'right' }}>Paid Amount</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center' }}>Status</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'left' }}>Challan Ref</th>
                 </tr>
               </thead>
               <tbody>
-                {taxData.advanceTaxPaid.map(a => (
+                {safeData.advanceTaxPaid.map(a => (
                   <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '14px', fontWeight: 800, color: '#0f172a' }}>{a.quarter}</td>
-                    <td style={{ padding: '14px', textAlign: 'center', fontWeight: 700 }}>{a.percentDue}%</td>
-                    <td style={{ padding: '14px', textAlign: 'right', fontWeight: 700 }}>₹{a.estimatedAmt?.toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '14px', textAlign: 'right', fontWeight: 900, color: '#047857' }}>₹{a.paidAmt?.toLocaleString('en-IN')}</td>
-                    <td style={{ padding: '14px', textAlign: 'center' }}>
+                    <td style={{ padding: '12px', fontWeight: 800, color: '#0f172a' }}>{a.quarter}</td>
+                    <td style={{ padding: '12px', textAlign: 'center', fontWeight: 700 }}>{a.percentDue}%</td>
+                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700 }}>₹{a.estimatedAmt?.toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 900, color: '#047857' }}>₹{a.paidAmt?.toLocaleString('en-IN')}</td>
+                    <td style={{ padding: '12px', textAlign: 'center' }}>
                       <span style={{
                         background: a.status === 'Paid' ? '#dcfce7' : '#fee2e2',
                         color: a.status === 'Paid' ? '#16a34a' : '#dc2626',
-                        padding: '3px 10px',
+                        padding: '2px 8px',
                         borderRadius: 99,
                         fontWeight: 800,
-                        fontSize: '0.72rem'
+                        fontSize: '0.7rem'
                       }}>
                         {a.status === 'Paid' ? '✓ Paid' : '🚨 Pending'}
                       </span>
                     </td>
-                    <td style={{ padding: '14px', color: '#64748b', fontSize: '0.78rem' }}>{a.challanNo || '-'}</td>
+                    <td style={{ padding: '12px', color: '#64748b', fontSize: '0.76rem' }}>{a.challanNo || '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1391,28 +1394,30 @@ export default function TaxTracker({ user, isAuthorized }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: 20
+          padding: 16
         }}>
           <div style={{
             background: '#ffffff',
-            borderRadius: 24,
+            borderRadius: 22,
             width: '100%',
-            maxWidth: 480,
-            padding: 28,
+            maxWidth: 460,
+            padding: 24,
+            maxHeight: '90vh',
+            overflowY: 'auto',
             boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, color: '#0f172a' }}>Log Tax Deduction Record</h3>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#0f172a' }}>Log Tax Deduction Record</h3>
               <button onClick={() => setModalOpen(false)} style={{ border: 'none', background: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#64748b' }}>✕</button>
             </div>
 
             <form onSubmit={handleAddDeduction} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Tax Section</label>
+                <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Tax Section</label>
                 <select
                   value={deductionForm.section}
                   onChange={e => setDeductionForm({ ...deductionForm, section: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
                 >
                   <option value="80C">Section 80C (EPF, PPF, ELSS, Tuition - Max ₹1.5L)</option>
                   <option value="80D">Section 80D (Health Insurance Premium)</option>
@@ -1425,35 +1430,35 @@ export default function TaxTracker({ user, isAuthorized }) {
               </div>
 
               <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Deduction Category Name</label>
+                <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Deduction Category Name</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. PPF Account Deposit / HDFC Health Insurance"
                   value={deductionForm.category}
                   onChange={e => setDeductionForm({ ...deductionForm, category: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
-                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Amount (₹)</label>
+                  <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Amount (₹)</label>
                   <input
                     type="number"
                     required
                     placeholder="e.g. 50000"
                     value={deductionForm.amount}
                     onChange={e => setDeductionForm({ ...deductionForm, amount: e.target.value })}
-                    style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Taxpayer / Earner</label>
+                  <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Taxpayer / Earner</label>
                   <select
                     value={deductionForm.earner}
                     onChange={e => setDeductionForm({ ...deductionForm, earner: e.target.value })}
-                    style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
                   >
                     <option value="Amit Singh">Amit Singh</option>
                     <option value="Sweta Gupta">Sweta Gupta</option>
@@ -1462,27 +1467,27 @@ export default function TaxTracker({ user, isAuthorized }) {
               </div>
 
               <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Notes / Reference</label>
+                <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Notes / Reference</label>
                 <input
                   type="text"
                   placeholder="e.g. Policy receipt # or Investment folio"
                   value={deductionForm.notes}
                   onChange={e => setDeductionForm({ ...deductionForm, notes: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+              <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  style={{ flex: 1, padding: '12px', borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                  style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', fontWeight: 700, cursor: 'pointer' }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  style={{ flex: 1, padding: '12px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, #10b981, #047857)', color: '#fff', fontWeight: 800, cursor: 'pointer' }}
+                  style={{ flex: 1, padding: '10px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #10b981, #047857)', color: '#fff', fontWeight: 800, cursor: 'pointer' }}
                 >
                   Save Tax Deduction
                 </button>
