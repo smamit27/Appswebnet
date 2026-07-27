@@ -46,8 +46,8 @@ const INITIAL_TAX_DATA = {
       company: 'Hinduja Global Solutions',
       basicSalary: 2140008,
       hraReceived: 1070004,
-      specialAllowance: 727596,
-      grossSalary: 4023204, // TEC minus Employer PF (42,80,004 - 2,56,800)
+      specialAllowance: 1069992,
+      grossSalary: 4280004, // TEC (42,80,004)
       employerNps: 85596, // 80CCD(2) Exemption
       tdsDeducted: 645000
     },
@@ -190,7 +190,7 @@ export default function TaxTracker({ user, isAuthorized }) {
   const safeData = useMemo(() => sanitizeTaxData(taxData), [taxData]);
 
   // ── TAX SIMULATOR STATE ──
-  const [simGrossSalary, setSimGrossSalary] = useState(4023204);
+  const [simGrossSalary, setSimGrossSalary] = useState(4280004);
   const [simNpsPercent, setSimNpsPercent] = useState(4);
   const [simSec80C, setSimSec80C] = useState(150000);
   const [simSec80D, setSimSec80D] = useState(72000);
@@ -359,7 +359,7 @@ export default function TaxTracker({ user, isAuthorized }) {
   // Preset Scenario Loader
   const handleApplyPreset = (presetName) => {
     if (presetName === 'current') {
-      setSimGrossSalary(4023204);
+      setSimGrossSalary(4280004);
       setSimNpsPercent(4);
       setSimSec80C(150000);
       setSimSec80D(72000);
@@ -377,7 +377,7 @@ export default function TaxTracker({ user, isAuthorized }) {
       setSimHraExemption(450000);
       setToast({ message: "Simulating 15% Salary Hike Scenario", type: "success" });
     } else if (presetName === 'max') {
-      setSimGrossSalary(4023204);
+      setSimGrossSalary(4280004);
       setSimNpsPercent(10);
       setSimSec80C(150000);
       setSimSec80D(75000);
@@ -386,7 +386,7 @@ export default function TaxTracker({ user, isAuthorized }) {
       setSimHraExemption(450000);
       setToast({ message: "Simulating Maximized Old Regime Deductions", type: "success" });
     } else if (presetName === 'zero') {
-      setSimGrossSalary(4023204);
+      setSimGrossSalary(4280004);
       setSimNpsPercent(4);
       setSimSec80C(0);
       setSimSec80D(0);
@@ -783,7 +783,7 @@ export default function TaxTracker({ user, isAuthorized }) {
                   onClick={() => handleApplyPreset('current')}
                   style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#f8fafc', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}
                 >
-                  🏢 Current HGS Plan (₹40.2L + 4% NPS)
+                  🏢 Current HGS Plan (₹42.8L + 4% NPS)
                 </button>
                 <button
                   onClick={() => handleApplyPreset('hike')}
