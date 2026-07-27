@@ -260,19 +260,19 @@ export default function TaxTracker({ user, isAuthorized }) {
     // 1. Current Status as per Payroll (with updated NPS / deductions)
     const payrollTaxable = Math.max(0, gross - (75000 + empNps + hraExemption + sec10 + profTax + sec24 + sec80c + chapVia));
     const payrollTax = calculateNewRegimeTax(gross, empNps + hraExemption + sec10 + profTax + sec24 + sec80c + chapVia);
-    const payrollCess = Math.round(payrollTax * 0.04);
+    const payrollCess = Math.ceil(payrollTax * 0.04);
     const payrollTotal = payrollTax + payrollCess;
 
     // 2. Old Regime with Deduction / Exemption (with updated NPS / deductions)
     const oldTaxable = Math.max(0, gross - (50000 + empNps + hraExemption + sec10 + profTax + sec24 + sec80c + chapVia));
     const oldTax = calculateOldRegimeTax(oldTaxable + 50000);
-    const oldCess = Math.round(oldTax * 0.04);
+    const oldCess = Math.ceil(oldTax * 0.04);
     const oldTotal = oldTax + oldCess;
 
     // 3. New Regime without Deduction / Exemption (Std Ded 75k + Employer NPS)
     const newTaxable = Math.max(0, gross - (75000 + empNps));
     const newTax = calculateNewRegimeTax(gross, empNps);
-    const newCess = Math.round(newTax * 0.04);
+    const newCess = Math.ceil(newTax * 0.04);
     const newTotal = newTax + newCess;
 
     return {
