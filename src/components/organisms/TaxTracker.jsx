@@ -213,7 +213,8 @@ export default function TaxTracker({ user, isAuthorized }) {
   const hgsCalc = useMemo(() => {
     const isCustom = Boolean(
       hgsInputs.addIncome || hgsInputs.rentPerMonth || hgsInputs.sec10Others ||
-      hgsInputs.profTax || hgsInputs.sec24Housing || hgsInputs.sec80C || hgsInputs.chapterVia
+      hgsInputs.profTax || hgsInputs.sec24Housing || hgsInputs.sec80C || hgsInputs.chapterVia ||
+      (hgsInputs.employerNps && hgsInputs.employerNps !== '85596')
     );
 
     const gross = 3965604 + Number(hgsInputs.addIncome || 0);
@@ -229,7 +230,7 @@ export default function TaxTracker({ user, isAuthorized }) {
     const sec24 = Math.min(Number(hgsInputs.sec24Housing || 0), 200000);
     const sec80c = Math.min(Number(hgsInputs.sec80C || 0), 150000);
     const chapVia = Number(hgsInputs.chapterVia || 0);
-    const empNps = Number(hgsInputs.employerNps || 85596);
+    const empNps = hgsInputs.employerNps !== '' ? Number(hgsInputs.employerNps) : 85596;
 
     // Baseline exact numbers matching portal screenshot when no custom inputs:
     if (!isCustom) {
@@ -239,31 +240,38 @@ export default function TaxTracker({ user, isAuthorized }) {
         payrollTax: 720498,
         payrollCess: 28820,
         payrollTotal: 749318,
+
         oldTaxable: 3915604,
         oldTax: 987182,
         oldCess: 39488,
         oldTotal: 1026670,
+
         newTaxable: 3890604,
         newTax: 747182,
         newCess: 29888,
         newTotal: 777070,
-        hraExemption: 0, sec10: 0, profTax: 0, sec24: 0, sec80c: 0, chapVia: 0, empNps: 85596
+
+        hraExemption: 0, sec10: 0, profTax: 0, sec24: 0, sec80c: 0, chapVia: 0, empNps: 85596,
+        oldEmpNps: 0, newEmpNps: 0
       };
     }
 
     // Custom computation when employee updates fields
-    const payrollTaxable = Math.max(0, gross - (hraExemption + sec10 + profTax + sec24 + sec80c + chapVia + empNps + 75000));
+    // 1. Current Status as per Payroll (with updated NPS / deductions)
+    const payrollTaxable = Math.max(0, gross - (75000 + empNps + hraExemption + sec10 + profTax + sec24 + sec80c + chapVia));
     const payrollTax = calculateNewRegimeTax(gross, empNps + hraExemption + sec10 + profTax + sec24 + sec80c + chapVia);
     const payrollCess = Math.round(payrollTax * 0.04);
     const payrollTotal = payrollTax + payrollCess;
 
-    const oldTaxable = Math.max(0, gross - (50000 + hraExemption + sec10 + profTax + sec24 + sec80c + chapVia));
+    // 2. Old Regime with Deduction / Exemption (with updated NPS / deductions)
+    const oldTaxable = Math.max(0, gross - (50000 + empNps + hraExemption + sec10 + profTax + sec24 + sec80c + chapVia));
     const oldTax = calculateOldRegimeTax(oldTaxable + 50000);
     const oldCess = Math.round(oldTax * 0.04);
     const oldTotal = oldTax + oldCess;
 
-    const newTaxable = Math.max(0, gross - 75000);
-    const newTax = calculateNewRegimeTax(gross, 0);
+    // 3. New Regime without Deduction / Exemption (Std Ded 75k + Employer NPS)
+    const newTaxable = Math.max(0, gross - (75000 + empNps));
+    const newTax = calculateNewRegimeTax(gross, empNps);
     const newCess = Math.round(newTax * 0.04);
     const newTotal = newTax + newCess;
 
@@ -272,7 +280,8 @@ export default function TaxTracker({ user, isAuthorized }) {
       payrollTaxable, payrollTax, payrollCess, payrollTotal,
       oldTaxable, oldTax, oldCess, oldTotal,
       newTaxable, newTax, newCess, newTotal,
-      hraExemption, sec10, profTax, sec24, sec80c, chapVia, empNps
+      hraExemption, sec10, profTax, sec24, sec80c, chapVia, empNps,
+      oldEmpNps: empNps, newEmpNps: empNps
     };
   }, [hgsInputs]);
   const [deductionForm, setDeductionForm] = useState({
@@ -1280,11 +1289,11 @@ export default function TaxTracker({ user, isAuthorized }) {
                 <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
                   <td style={{ padding: '7px 12px', color: '#334155' }}>Less : Deductions Employer NPS</td>
                   <td style={{ padding: '7px 12px' }}>
-                    <input type="number" value={hgsInputs.employerNps} onChange={e => setHgsInputs({ ...hgsInputs, employerNps: e.target.value })} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.8rem' }} />
+                    <input type="number" placeholder="85596" value={hgsInputs.employerNps} onChange={e => setHgsInputs({ ...hgsInputs, employerNps: e.target.value })} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.8rem' }} />
                   </td>
                   <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700 }}>{hgsCalc.empNps.toLocaleString('en-IN')}</td>
-                  <td style={{ padding: '7px 12px', textAlign: 'right' }}>0</td>
-                  <td style={{ padding: '7px 12px', textAlign: 'right' }}>0</td>
+                  <td style={{ padding: '7px 12px', textAlign: 'right' }}>{hgsCalc.oldEmpNps ? hgsCalc.oldEmpNps.toLocaleString('en-IN') : 0}</td>
+                  <td style={{ padding: '7px 12px', textAlign: 'right' }}>{hgsCalc.newEmpNps ? hgsCalc.newEmpNps.toLocaleString('en-IN') : 0}</td>
                 </tr>
 
                 {/* Action Row */}
