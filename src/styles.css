@@ -830,7 +830,14 @@ p:last-child { margin-bottom: 0; }
   to   { opacity: 1; transform: none; }
 }
 
-.tab-content-panel { animation: tab-fade-in 280ms cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+.tab-content-panel {
+  animation: tab-fade-in 280ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
 .tab-content-panel--exit { animation: none; opacity: 0; }
 
 /* ── Scrollbar ─────────────────────────────────────────────────── */
