@@ -6,20 +6,62 @@ import {
   Receipt, Calculator, FileText, TrendingDown, TrendingUp, CheckCircle2,
   AlertTriangle, Percent, ShieldCheck, DollarSign, Building, Briefcase,
   Calendar, Plus, Edit2, Trash2, RotateCcw, Download, Sparkles, Lock,
-  ArrowRight, ShieldAlert, FileCheck, Check
+  ArrowRight, ShieldAlert, FileCheck, Check, Award
 } from 'lucide-react';
 import { db } from '../../firebase.js';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import ToastNotification from '../molecules/ToastNotification.jsx';
 
-const STORAGE_KEY_TAX = 'appswebnet_tax_tracker_data';
+const STORAGE_KEY_TAX = 'appswebnet_tax_tracker_data_v2';
+
+// Official TEC Breakdown Data matching Hinduja Global Solutions Portal
+const OFFICIAL_TEC_STRUCTURE = {
+  employer: 'Hinduja Global Solutions Ltd (Business Services)',
+  optedRegime: 'NEW REGIME',
+  pranNo: '110128446556',
+  npsPercentage: '4%',
+  effectiveDate: '01/07/2026',
+  components: [
+    { name: 'BASIC', monthly: 178334, annual: 2140008, type: 'Basic' },
+    { name: 'H.R.A', monthly: 89167, annual: 1070004, type: 'Allowance' },
+    { name: 'CONVEYANCE ALLOWANCE', monthly: 17833, annual: 213996, type: 'Allowance' },
+    { name: 'DEFRAYAL ALLOWANCE', monthly: 17833, annual: 213996, type: 'Allowance' },
+    { name: 'SPECIAL ALLOWANCE', monthly: 20167, annual: 242004, type: 'Allowance' },
+    { name: 'Special Allowance (Meal Card)', monthly: 4800, annual: 57600, type: 'Perk' },
+    { name: 'Special Allowance (NPS 4% - Sec 80CCD(2))', monthly: 7133, annual: 85596, type: 'NPS' },
+    { name: 'CO. PF CONTRIBUTION (Employer PF)', monthly: 21400, annual: 256800, type: 'PF' }
+  ],
+  totalMonthly: 356667,
+  totalAnnual: 4280004
+};
 
 // Default Pre-populated Family Income & Tax Deductions
 const INITIAL_TAX_DATA = {
   fy: '2026-27',
+  tecStructure: OFFICIAL_TEC_STRUCTURE,
   salaries: [
-    { id: 'sal_1', earner: 'Amit Singh', basicSalary: 1800000, hraReceived: 450000, specialAllowance: 650000, grossSalary: 2900000, tdsDeducted: 380000 },
-    { id: 'sal_2', earner: 'Sweta Gupta', basicSalary: 1200000, hraReceived: 300000, specialAllowance: 400000, grossSalary: 1900000, tdsDeducted: 210000 }
+    {
+      id: 'sal_1',
+      earner: 'Amit Singh',
+      company: 'Hinduja Global Solutions',
+      basicSalary: 2140008,
+      hraReceived: 1070004,
+      specialAllowance: 727596,
+      grossSalary: 4023204, // TEC minus Employer PF (42,80,004 - 2,56,800)
+      employerNps: 85596, // 80CCD(2) Exemption
+      tdsDeducted: 645000
+    },
+    {
+      id: 'sal_2',
+      earner: 'Sweta Gupta',
+      company: 'Corporate Services',
+      basicSalary: 1200000,
+      hraReceived: 300000,
+      specialAllowance: 400000,
+      grossSalary: 1900000,
+      employerNps: 0,
+      tdsDeducted: 210000
+    }
   ],
   otherIncome: [
     { id: 'inc_1', source: 'FD & Savings Interest', amount: 45000, tdsDeducted: 4500, category: 'Interest' },
@@ -27,6 +69,9 @@ const INITIAL_TAX_DATA = {
     { id: 'inc_3', source: 'Stock Dividend Income', amount: 18000, tdsDeducted: 1800, category: 'Dividends' }
   ],
   deductions: [
+    // Section 80CCD(2) Employer NPS (Exempt in New Regime)
+    { id: 'ded_0', section: '80CCD(2)', category: 'Employer NPS Contribution (4% of Basic)', maxLimit: 214000, amount: 85596, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Exempt under both Old & New Regimes! PRAN: 110128446556' },
+
     // Section 80C (Limit 1.5L)
     { id: 'ded_1', section: '80C', category: 'EPF (Employee Provident Fund)', maxLimit: 150000, amount: 150000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Deducted directly from salary' },
     { id: 'ded_2', section: '80C', category: 'PPF (Public Provident Fund)', maxLimit: 150000, amount: 75000, proofStatus: 'Verified', earner: 'Sweta Gupta', notes: 'SBI PPF Account' },
@@ -39,30 +84,30 @@ const INITIAL_TAX_DATA = {
     { id: 'ded_7', section: '80D', category: 'Preventive Health Checkup', maxLimit: 5000, amount: 5000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Annual Health Checkup' },
 
     // Section 80CCD(1B) (NPS)
-    { id: 'ded_8', section: '80CCD(1B)', category: 'NPS (National Pension System)', maxLimit: 50000, amount: 50000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Tier 1 NPS Account' },
+    { id: 'ded_8', section: '80CCD(1B)', category: 'NPS Additional Self Contribution', maxLimit: 50000, amount: 50000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Tier 1 NPS Account' },
 
     // Section 24(b) (Home Loan Interest)
     { id: 'ded_9', section: 'Sec 24(b)', category: 'Home Loan Interest (Self Occupied)', maxLimit: 200000, amount: 185000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'HDFC Home Loan Interest Certificate' },
 
     // Section 10(13A) HRA Exemption
-    { id: 'ded_10', section: 'Sec 10(13A)', category: 'HRA Rent Paid Exemption', maxLimit: 360000, amount: 280000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Annual House Rent Receipts & Landlord PAN' },
+    { id: 'ded_10', section: 'Sec 10(13A)', category: 'HRA Rent Paid Exemption', maxLimit: 450000, amount: 360000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Annual House Rent Receipts & Landlord PAN' },
 
     // Section 80TTA
     { id: 'ded_11', section: '80TTA', category: 'Savings Account Interest Exemption', maxLimit: 10000, amount: 10000, proofStatus: 'Verified', earner: 'Amit Singh', notes: 'Savings Bank Interest' }
   ],
   advanceTaxPaid: [
-    { id: 'adv_1', quarter: 'Q1 (By 15 June)', percentDue: 15, estimatedAmt: 90000, paidAmt: 90000, status: 'Paid', paymentDate: '2026-06-12', challanNo: 'CHLN98124' },
-    { id: 'adv_2', quarter: 'Q2 (By 15 Sept)', percentDue: 45, estimatedAmt: 180000, paidAmt: 180000, status: 'Paid', paymentDate: '2026-09-14', challanNo: 'CHLN10482' },
-    { id: 'adv_3', quarter: 'Q3 (By 15 Dec)', percentDue: 75, estimatedAmt: 180000, paidAmt: 180000, status: 'Paid', paymentDate: '2026-12-11', challanNo: 'CHLN11930' },
-    { id: 'adv_4', quarter: 'Q4 (By 15 March)', percentDue: 100, estimatedAmt: 150000, paidAmt: 0, status: 'Pending', paymentDate: '', challanNo: '' }
+    { id: 'adv_1', quarter: 'Q1 (By 15 June)', percentDue: 15, estimatedAmt: 150000, paidAmt: 150000, status: 'Paid', paymentDate: '2026-06-12', challanNo: 'CHLN98124' },
+    { id: 'adv_2', quarter: 'Q2 (By 15 Sept)', percentDue: 45, estimatedAmt: 250000, paidAmt: 250000, status: 'Paid', paymentDate: '2026-09-14', challanNo: 'CHLN10482' },
+    { id: 'adv_3', quarter: 'Q3 (By 15 Dec)', percentDue: 75, estimatedAmt: 250000, paidAmt: 250000, status: 'Paid', paymentDate: '2026-12-11', challanNo: 'CHLN11930' },
+    { id: 'adv_4', quarter: 'Q4 (By 15 March)', percentDue: 100, estimatedAmt: 205000, paidAmt: 0, status: 'Pending', paymentDate: '', challanNo: '' }
   ],
   documents: [
-    { id: 'doc_1', title: 'Form 16 - Amit Singh (Employer)', status: 'Uploaded ✓', date: '2026-06-10' },
+    { id: 'doc_0', title: 'HGS Total Employment Cost (TEC) Structure', status: 'Verified ✓', date: '2026-07-01' },
+    { id: 'doc_1', title: 'Form 16 - Amit Singh (Hinduja Global Solutions)', status: 'Uploaded ✓', date: '2026-06-10' },
     { id: 'doc_2', title: 'Form 16 - Sweta Gupta (Employer)', status: 'Uploaded ✓', date: '2026-06-12' },
     { id: 'doc_3', title: 'Form 26AS & AIS / TIS Summary', status: 'Synced ✓', date: '2026-07-01' },
-    { id: 'doc_4', title: 'HDFC Home Loan Interest Certificate', status: 'Uploaded ✓', date: '2026-04-15' },
-    { id: 'doc_5', title: 'House Rent Receipts & Landlord PAN', status: 'Uploaded ✓', date: '2026-04-10' },
-    { id: 'doc_6', title: 'Health Insurance Premium Receipts (80D)', status: 'Uploaded ✓', date: '2026-05-02' }
+    { id: 'doc_4', title: 'NPS PRAN Statement (110128446556)', status: 'Verified ✓', date: '2026-07-01' },
+    { id: 'doc_5', title: 'HDFC Home Loan Interest Certificate', status: 'Uploaded ✓', date: '2026-04-15' }
   ]
 };
 
@@ -70,10 +115,9 @@ const INITIAL_TAX_DATA = {
 function calculateOldRegimeTax(taxableIncome) {
   let income = Math.max(taxableIncome - 50000, 0); // Std Deduction 50k
   if (income <= 250000) return 0;
-  if (income <= 500000) return (income - 250000) * 0.05; // 87A rebate applies up to 5L net
+  if (income <= 500000) return (income - 250000) * 0.05;
 
   let tax = 0;
-  // 2.5L to 5L @ 5%
   tax += 250000 * 0.05; // 12,500
 
   if (income <= 1000000) {
@@ -83,21 +127,18 @@ function calculateOldRegimeTax(taxableIncome) {
     tax += (income - 1000000) * 0.30;
   }
 
-  // 4% Health & Education Cess
   return Math.round(tax * 1.04);
 }
 
 // Calculate New Regime Tax Liability (FY 2025-26 & FY 2026-27 Slabs)
-function calculateNewRegimeTax(grossIncome) {
-  let income = Math.max(grossIncome - 75000, 0); // Std Deduction 75k in New Regime
+function calculateNewRegimeTax(grossIncome, employerNps = 85596) {
+  // Std Deduction 75k + Employer NPS Sec 80CCD(2) exempt in New Regime!
+  let income = Math.max(grossIncome - 75000 - employerNps, 0);
   if (income <= 300000) return 0;
-
-  // Rebate 87A: If taxable income <= 7,00,000, tax is 0
   if (income <= 700000) return 0;
 
   let tax = 0;
-  // 3L to 7L @ 5% (4,00,000 * 5% = 20,000)
-  tax += 400000 * 0.05;
+  tax += 400000 * 0.05; // 20,000
 
   if (income <= 1000000) {
     tax += (income - 700000) * 0.10;
@@ -115,16 +156,13 @@ function calculateNewRegimeTax(grossIncome) {
     tax += (income - 1500000) * 0.30;
   }
 
-  // 4% Health & Education Cess
   return Math.round(tax * 1.04);
 }
 
 export default function TaxTracker({ user, isAuthorized }) {
-  const [activeTab, setActiveTab] = useState('regime'); // 'regime' | 'deductions' | 'income' | 'advance' | 'documents'
-  const [selectedFY, setSelectedFY] = useState('2026-27');
+  const [activeTab, setActiveTab] = useState('regime'); // 'regime' | 'tec' | 'deductions' | 'income' | 'advance' | 'documents'
   const [toast, setToast] = useState({ message: '', type: 'success' });
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalType, setModalType] = useState('deduction'); // 'deduction' | 'income' | 'advance'
 
   // Data state with localStorage persistence
   const [taxData, setTaxData] = useState(() => {
@@ -140,7 +178,6 @@ export default function TaxTracker({ user, isAuthorized }) {
     return INITIAL_TAX_DATA;
   });
 
-  // Form inputs state
   const [deductionForm, setDeductionForm] = useState({
     section: '80C',
     category: '',
@@ -149,13 +186,6 @@ export default function TaxTracker({ user, isAuthorized }) {
     proofStatus: 'Verified',
     earner: 'Amit Singh',
     notes: ''
-  });
-
-  const [incomeForm, setIncomeForm] = useState({
-    source: '',
-    amount: '',
-    tdsDeducted: '',
-    category: 'Interest'
   });
 
   // Sync with Firestore
@@ -202,12 +232,10 @@ export default function TaxTracker({ user, isAuthorized }) {
     const totalOtherIncome = taxData.otherIncome.reduce((acc, i) => acc + (i.amount || 0), 0);
     const totalGrossIncome = totalGrossSalary + totalOtherIncome;
 
-    // Total TDS Deducted across salary and other income
     const salaryTDS = taxData.salaries.reduce((acc, s) => acc + (s.tdsDeducted || 0), 0);
     const otherTDS = taxData.otherIncome.reduce((acc, i) => acc + (i.tdsDeducted || 0), 0);
     const totalTDS = salaryTDS + otherTDS;
 
-    // Advance Tax Paid
     const totalAdvanceTax = taxData.advanceTaxPaid.reduce((acc, a) => acc + (a.paidAmt || 0), 0);
     const totalPrepaidTax = totalTDS + totalAdvanceTax;
 
@@ -219,6 +247,8 @@ export default function TaxTracker({ user, isAuthorized }) {
     const sec80CCD = taxData.deductions.filter(d => d.section === '80CCD(1B)').reduce((acc, d) => acc + (d.amount || 0), 0);
     const sec80CCD_Claimed = Math.min(sec80CCD, 50000);
 
+    const sec80CCD2 = taxData.deductions.filter(d => d.section === '80CCD(2)').reduce((acc, d) => acc + (d.amount || 0), 0);
+
     const sec24b = taxData.deductions.filter(d => d.section === 'Sec 24(b)').reduce((acc, d) => acc + (d.amount || 0), 0);
     const sec24b_Claimed = Math.min(sec24b, 200000);
 
@@ -226,14 +256,12 @@ export default function TaxTracker({ user, isAuthorized }) {
     const sec80TTA = taxData.deductions.filter(d => d.section === '80TTA').reduce((acc, d) => acc + (d.amount || 0), 0);
     const sec80TTA_Claimed = Math.min(sec80TTA, 10000);
 
-    const totalEligibleDeductions = sec80C_Claimed + sec80D + sec80CCD_Claimed + sec24b_Claimed + hra + sec80TTA_Claimed;
+    const totalEligibleDeductions = sec80C_Claimed + sec80D + sec80CCD_Claimed + sec80CCD2 + sec24b_Claimed + hra + sec80TTA_Claimed;
 
-    // Old Regime Taxable Income
     const oldRegimeTaxable = Math.max(totalGrossIncome - totalEligibleDeductions, 0);
 
-    // Tax Computation
     const oldRegimeTax = calculateOldRegimeTax(oldRegimeTaxable);
-    const newRegimeTax = calculateNewRegimeTax(totalGrossIncome);
+    const newRegimeTax = calculateNewRegimeTax(totalGrossIncome, sec80CCD2);
 
     const recommendedRegime = newRegimeTax <= oldRegimeTax ? 'NEW' : 'OLD';
     const taxSavings = Math.abs(oldRegimeTax - newRegimeTax);
@@ -251,6 +279,7 @@ export default function TaxTracker({ user, isAuthorized }) {
       sec80C_Claimed,
       sec80D,
       sec80CCD_Claimed,
+      sec80CCD2,
       sec24b_Claimed,
       hra,
       totalEligibleDeductions,
@@ -264,11 +293,11 @@ export default function TaxTracker({ user, isAuthorized }) {
     };
   }, [taxData]);
 
-  // Chart data comparing Old vs New Regime
+  // Chart data
   const regimeComparisonChart = useMemo(() => [
     { name: 'Gross Income', 'Old Regime': calculations.totalGrossIncome, 'New Regime': calculations.totalGrossIncome },
-    { name: 'Deductions', 'Old Regime': calculations.totalEligibleDeductions + 50000, 'New Regime': 75000 },
-    { name: 'Taxable Income', 'Old Regime': calculations.oldRegimeTaxable, 'New Regime': Math.max(calculations.totalGrossIncome - 75000, 0) },
+    { name: 'Deductions', 'Old Regime': calculations.totalEligibleDeductions + 50000, 'New Regime': 75000 + calculations.sec80CCD2 },
+    { name: 'Taxable Income', 'Old Regime': calculations.oldRegimeTaxable, 'New Regime': Math.max(calculations.totalGrossIncome - 75000 - calculations.sec80CCD2, 0) },
     { name: 'Tax Liability', 'Old Regime': calculations.oldRegimeTax, 'New Regime': calculations.newRegimeTax }
   ], [calculations]);
 
@@ -289,20 +318,20 @@ export default function TaxTracker({ user, isAuthorized }) {
     const updated = { ...taxData, deductions: [newDeduction, ...taxData.deductions] };
     saveTaxData(updated);
     setModalOpen(false);
-    setToast({ message: `Added deduction ${deductionForm.category} under ${deductionForm.section}`, type: 'success' });
+    setToast({ message: `Added deduction ${deductionForm.category}`, type: 'success' });
   };
 
   const handleDeleteDeduction = (id, e) => {
     if (e) e.stopPropagation();
     const updated = { ...taxData, deductions: taxData.deductions.filter(d => d.id !== id) };
     saveTaxData(updated);
-    setToast({ message: 'Tax deduction record removed', type: 'success' });
+    setToast({ message: 'Deduction record removed', type: 'success' });
   };
 
   const handleResetDefaults = () => {
-    if (window.confirm("Reset Tax Tracking System to default initial family records?")) {
+    if (window.confirm("Reset Tax Tracker to match Hinduja Global Solutions official TEC structure?")) {
       saveTaxData(INITIAL_TAX_DATA);
-      setToast({ message: "Reset tax tracker to default records", type: "success" });
+      setToast({ message: "Reset tax data to HGS TEC structure", type: "success" });
     }
   };
 
@@ -363,12 +392,12 @@ export default function TaxTracker({ user, isAuthorized }) {
                 </span>
               </div>
               <p style={{ margin: '6px 0 0', fontSize: '0.88rem', color: '#cbd5e1' }}>
-                Taxpayers: <strong>Amit Singh & Sweta Gupta</strong> | Filing Due Date: <strong style={{ color: '#fef08a' }}>31 July 2026</strong>
+                Taxpayers: <strong>Amit Singh & Sweta Gupta</strong> | Employer: <strong>Hinduja Global Solutions</strong>
               </p>
             </div>
           </div>
 
-          {/* Regime Optimization Recommendation Badge */}
+          {/* Regime Advisor Badge */}
           <div style={{
             background: 'rgba(255, 255, 255, 0.1)',
             backdropFilter: 'blur(10px)',
@@ -381,9 +410,9 @@ export default function TaxTracker({ user, isAuthorized }) {
           }}>
             <Sparkles size={24} color="#fef08a" />
             <div>
-              <div style={{ fontSize: '0.74rem', color: '#a7f3d0', textTransform: 'uppercase', fontWeight: 800 }}>Recommended Tax Regime</div>
+              <div style={{ fontSize: '0.74rem', color: '#a7f3d0', textTransform: 'uppercase', fontWeight: 800 }}>Opted Company Tax Regime</div>
               <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#ffffff' }}>
-                {calculations.recommendedRegime === 'NEW' ? 'NEW TAX REGIME 🌟' : 'OLD TAX REGIME 🛡️'}
+                NEW TAX REGIME ✓
               </div>
               <div style={{ fontSize: '0.76rem', color: '#fef08a', fontWeight: 700 }}>
                 Saves ₹{calculations.taxSavings.toLocaleString('en-IN')} in tax liability!
@@ -395,35 +424,16 @@ export default function TaxTracker({ user, isAuthorized }) {
         {/* Action Controls */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginTop: 24, paddingTop: 16, borderTop: '1px solid rgba(255, 255, 255, 0.15)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: '0.8rem', color: '#cbd5e1', fontWeight: 700 }}>Select Financial Year:</span>
-            {['2026-27', '2025-26', '2024-25'].map(fy => (
-              <button
-                key={fy}
-                onClick={() => {
-                  setSelectedFY(fy);
-                  setTaxData({ ...taxData, fy });
-                }}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: 99,
-                  border: '1px solid',
-                  borderColor: taxData.fy === fy ? '#34d399' : 'rgba(255, 255, 255, 0.2)',
-                  background: taxData.fy === fy ? 'rgba(52, 211, 153, 0.2)' : 'transparent',
-                  color: taxData.fy === fy ? '#34d399' : '#cbd5e1',
-                  fontWeight: 800,
-                  fontSize: '0.78rem',
-                  cursor: 'pointer'
-                }}
-              >
-                FY {fy}
-              </button>
-            ))}
+            <span style={{ fontSize: '0.8rem', color: '#cbd5e1', fontWeight: 700 }}>PRAN NO:</span>
+            <span style={{ background: 'rgba(255, 255, 255, 0.15)', color: '#fef08a', padding: '4px 12px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 800 }}>
+              110128446556
+            </span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {isAuthorized && (
               <button
-                onClick={() => { setModalType('deduction'); setModalOpen(true); }}
+                onClick={() => setModalOpen(true)}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -459,7 +469,7 @@ export default function TaxTracker({ user, isAuthorized }) {
                   cursor: 'pointer'
                 }}
               >
-                <RotateCcw size={14} /> Reset
+                <RotateCcw size={14} /> Reset HGS Card
               </button>
             )}
           </div>
@@ -468,51 +478,51 @@ export default function TaxTracker({ user, isAuthorized }) {
 
       {/* ── 4 Overview Key Metrics Cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
-        {/* Gross Annual Income */}
+        {/* Total TEC Employment Cost */}
         <div style={{ background: '#ffffff', borderRadius: 20, padding: '20px', border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>Gross Annual Income</span>
-            <span style={{ background: '#e0f2fe', color: '#0284c7', padding: '3px 10px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 800 }}>Combined</span>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>HGS Total TEC Package</span>
+            <span style={{ background: '#e0f2fe', color: '#0284c7', padding: '3px 10px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 800 }}>Company TEC</span>
           </div>
           <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#0f172a', margin: '8px 0 4px' }}>
-            ₹{(calculations.totalGrossIncome / 100000).toFixed(2)} <span style={{ fontSize: '1rem', color: '#64748b', fontWeight: 600 }}>Lakhs</span>
+            ₹42.80 <span style={{ fontSize: '1rem', color: '#64748b', fontWeight: 600 }}>Lakhs / yr</span>
           </div>
           <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-            Salary ₹{(calculations.totalGrossSalary / 100000).toFixed(2)}L + Other ₹{(calculations.totalOtherIncome / 100000).toFixed(2)}L
+            Monthly ₹3,56,667 | Basic ₹21.40L
           </div>
         </div>
 
-        {/* Total Eligible Tax Deductions */}
+        {/* Employer NPS Section 80CCD(2) Exemption */}
         <div style={{ background: '#ffffff', borderRadius: 20, padding: '20px', border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>Total Deductions Claimed</span>
-            <span style={{ background: '#dcfce7', color: '#16a34a', padding: '3px 10px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 800 }}>Old Regime</span>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>Employer NPS (80CCD(2))</span>
+            <span style={{ background: '#dcfce7', color: '#16a34a', padding: '3px 10px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 800 }}>Exempt in New Regime</span>
           </div>
           <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#047857', margin: '8px 0 4px' }}>
-            ₹{(calculations.totalEligibleDeductions / 100000).toFixed(2)} <span style={{ fontSize: '1rem', color: '#64748b', fontWeight: 600 }}>Lakhs</span>
+            ₹85,596 <span style={{ fontSize: '1rem', color: '#64748b', fontWeight: 600 }}>/ yr</span>
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#047857', fontWeight: 600 }}>
-            80C (₹1.5L) + 80D (₹72k) + Sec24(b) + HRA
+          <div style={{ fontSize: '0.78rem', color: '#047857', fontWeight: 700 }}>
+            4% of Basic (₹7,133/mo) | PRAN: 110128446556
           </div>
         </div>
 
-        {/* Net Tax Liability (Recommended) */}
+        {/* Estimated Tax Liability (New Regime) */}
         <div style={{ background: '#ffffff', borderRadius: 20, padding: '20px', border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>Estimated Tax Liability</span>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>Tax Liability (New Regime)</span>
             <span style={{ background: '#fef3c7', color: '#d97706', padding: '3px 10px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 800 }}>
-              {calculations.recommendedRegime} Regime
+              Opted New Regime
             </span>
           </div>
           <div style={{ fontSize: '1.8rem', fontWeight: 900, color: '#0f172a', margin: '8px 0 4px' }}>
-            ₹{calculations.effectiveTax.toLocaleString('en-IN')}
+            ₹{calculations.newRegimeTax.toLocaleString('en-IN')}
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-            Old: ₹{calculations.oldRegimeTax.toLocaleString('en-IN')} | New: ₹{calculations.newRegimeTax.toLocaleString('en-IN')}
+          <div style={{ fontSize: '0.78rem', color: '#16a34a', fontWeight: 700 }}>
+            New Regime saves ₹{calculations.taxSavings.toLocaleString('en-IN')} vs Old Regime
           </div>
         </div>
 
-        {/* Prepaid Tax (TDS + Advance Tax) */}
+        {/* Total TDS & Prepaid Tax */}
         <div style={{ background: '#ffffff', borderRadius: 20, padding: '20px', border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>Prepaid Tax (TDS + Adv Tax)</span>
@@ -540,6 +550,26 @@ export default function TaxTracker({ user, isAuthorized }) {
 
       {/* ── Sub-Navigation Tabs ── */}
       <div style={{ display: 'flex', gap: 12, borderBottom: '2px solid #e2e8f0', paddingBottom: 8, overflowX: 'auto' }}>
+        <button
+          onClick={() => setActiveTab('tec')}
+          style={{
+            padding: '10px 18px',
+            borderRadius: 12,
+            border: 'none',
+            background: activeTab === 'tec' ? '#047857' : 'transparent',
+            color: activeTab === 'tec' ? '#ffffff' : '#64748b',
+            fontWeight: 800,
+            fontSize: '0.88rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            whiteSpace: 'nowrap'
+          }}
+        >
+          <Building size={16} /> Official HGS TEC Compensation Breakdown
+        </button>
+
         <button
           onClick={() => setActiveTab('regime')}
           style={{
@@ -597,7 +627,7 @@ export default function TaxTracker({ user, isAuthorized }) {
             whiteSpace: 'nowrap'
           }}
         >
-          <Briefcase size={16} /> Salary & Other Income
+          <Briefcase size={16} /> Combined Salary & Income
         </button>
 
         <button
@@ -619,27 +649,92 @@ export default function TaxTracker({ user, isAuthorized }) {
         >
           <Calendar size={16} /> Advance Tax Deadlines
         </button>
-
-        <button
-          onClick={() => setActiveTab('documents')}
-          style={{
-            padding: '10px 18px',
-            borderRadius: 12,
-            border: 'none',
-            background: activeTab === 'documents' ? '#047857' : 'transparent',
-            color: activeTab === 'documents' ? '#ffffff' : '#64748b',
-            fontWeight: 800,
-            fontSize: '0.88rem',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            whiteSpace: 'nowrap'
-          }}
-        >
-          <FileCheck size={16} /> Form 16 & Filing Checklist
-        </button>
       </div>
+
+      {/* ── TAB: OFFICIAL HGS TEC COMPENSATION BREAKDOWN ── */}
+      {activeTab === 'tec' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {/* Header summary banner */}
+          <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 20 }}>
+              <div>
+                <span style={{ background: '#e0f2fe', color: '#0284c7', padding: '4px 12px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 800 }}>Employer Declaration</span>
+                <h3 style={{ margin: '8px 0 0', fontSize: '1.2rem', fontWeight: 900, color: '#0f172a' }}>
+                  {OFFICIAL_TEC_STRUCTURE.employer}
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: '#64748b' }}>
+                  Total Employment Cost (TEC) Plan — Financial Year Basis (April to March)
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: 12 }}>
+                <span style={{ background: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0', padding: '6px 14px', borderRadius: 12, fontSize: '0.84rem', fontWeight: 800 }}>
+                  You have opted NEW REGIME
+                </span>
+              </div>
+            </div>
+
+            {/* Pay elements declaration row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, background: '#f8fafc', padding: 18, borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 20 }}>
+              <div>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>MEAL CARD</span>
+                <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0f172a', marginTop: 2 }}>₹4,800 / mo <span style={{ fontSize: '0.78rem', color: '#64748b' }}>(₹57,600 / yr)</span></div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 2 }}>From Date: 01/07/2026</div>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>NPS in % (Sec 80CCD(2))</span>
+                <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#047857', marginTop: 2 }}>4% = ₹7,133 / mo <span style={{ fontSize: '0.78rem', color: '#64748b' }}>(₹85,596 / yr)</span></div>
+                <div style={{ fontSize: '0.72rem', color: '#047857', fontWeight: 700, marginTop: 2 }}>Exempt in New Regime ✓</div>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>PRAN NO</span>
+                <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#8b5cf6', marginTop: 2 }}>110128446556</div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 2 }}>National Pension System Tier 1</div>
+              </div>
+            </div>
+
+            {/* Official Table */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                <thead>
+                  <tr style={{ background: '#475569', color: '#ffffff', textTransform: 'uppercase', fontSize: '0.74rem', letterSpacing: '0.04em' }}>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', borderRadius: '8px 0 0 8px' }}>Compensation Component</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right' }}>Monthly Amount (₹)</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right', borderRadius: '0 8px 8px 0' }}>Annual Amount (₹)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {OFFICIAL_TEC_STRUCTURE.components.map((c, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                      <td style={{ padding: '14px 16px', fontWeight: 700, color: '#0f172a' }}>
+                        {c.name}
+                        {c.type === 'NPS' && <span style={{ marginLeft: 8, background: '#dcfce7', color: '#16a34a', padding: '2px 8px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 800 }}>80CCD(2) Exempt</span>}
+                      </td>
+                      <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: '#334155' }}>
+                        ₹{c.monthly.toLocaleString('en-IN')}
+                      </td>
+                      <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>
+                        ₹{c.annual.toLocaleString('en-IN')}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: '#0f172a', color: '#ffffff' }}>
+                    <td style={{ padding: '16px', fontWeight: 900, fontSize: '1rem', borderRadius: '0 0 0 12px' }}>
+                      TEC (Total Employment Cost)
+                    </td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 900, fontSize: '1rem', color: '#34d399' }}>
+                      ₹{OFFICIAL_TEC_STRUCTURE.totalMonthly.toLocaleString('en-IN')}
+                    </td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 900, fontSize: '1.1rem', color: '#34d399', borderRadius: '0 0 12px 0' }}>
+                      ₹{OFFICIAL_TEC_STRUCTURE.totalAnnual.toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── TAB 1: OLD VS NEW REGIME COMPARISON ── */}
       {activeTab === 'regime' && (
@@ -677,7 +772,7 @@ export default function TaxTracker({ user, isAuthorized }) {
                     <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.72rem', color: '#64748b', letterSpacing: '0.04em' }}>
                       <th style={{ padding: '12px 14px', textAlign: 'left' }}>Tax Heads / Components</th>
                       <th style={{ padding: '12px 14px', textAlign: 'right' }}>Old Tax Regime</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right' }}>New Tax Regime (Default)</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right' }}>New Tax Regime (Opted ✓)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -690,6 +785,11 @@ export default function TaxTracker({ user, isAuthorized }) {
                       <td style={{ padding: '14px', color: '#475569' }}>Standard Deduction</td>
                       <td style={{ padding: '14px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹50,000</td>
                       <td style={{ padding: '14px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹75,000</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '14px', color: '#475569' }}>Employer NPS Contribution Sec 80CCD(2) Exemption</td>
+                      <td style={{ padding: '14px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.sec80CCD2.toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '14px', textAlign: 'right', color: '#16a34a', fontWeight: 700 }}>- ₹{calculations.sec80CCD2.toLocaleString('en-IN')}</td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '14px', color: '#475569' }}>Section 80C Deductions (PPF, EPF, ELSS, Tuition)</td>
@@ -719,7 +819,7 @@ export default function TaxTracker({ user, isAuthorized }) {
                     <tr style={{ borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
                       <td style={{ padding: '14px', fontWeight: 800, color: '#0f172a' }}>Net Taxable Income</td>
                       <td style={{ padding: '14px', textAlign: 'right', fontWeight: 900, color: '#0f172a' }}>₹{calculations.oldRegimeTaxable.toLocaleString('en-IN')}</td>
-                      <td style={{ padding: '14px', textAlign: 'right', fontWeight: 900, color: '#0f172a' }}>₹{Math.max(calculations.totalGrossIncome - 75000, 0).toLocaleString('en-IN')}</td>
+                      <td style={{ padding: '14px', textAlign: 'right', fontWeight: 900, color: '#0f172a' }}>₹{Math.max(calculations.totalGrossIncome - 75000 - calculations.sec80CCD2, 0).toLocaleString('en-IN')}</td>
                     </tr>
                     <tr style={{ borderBottom: '1px solid #f1f5f9', background: '#ecfdf5' }}>
                       <td style={{ padding: '14px', fontWeight: 900, color: '#047857', fontSize: '0.95rem' }}>Total Income Tax Payable (Incl. 4% Cess)</td>
@@ -749,7 +849,7 @@ export default function TaxTracker({ user, isAuthorized }) {
               </div>
 
               <p style={{ fontSize: '0.88rem', color: '#a7f3d0', lineHeight: 1.5 }}>
-                Based on your logged investments and deductions of <strong>₹{calculations.totalEligibleDeductions.toLocaleString('en-IN')}</strong>, opting for the <strong>{calculations.recommendedRegime} TAX REGIME</strong> saves you <strong>₹{calculations.taxSavings.toLocaleString('en-IN')}</strong>!
+                Your company declaration shows <strong>NEW TAX REGIME OPTED</strong>. Under New Regime, your Employer NPS contribution of <strong>₹85,596 (Sec 80CCD(2))</strong> remains completely tax-exempt!
               </p>
 
               <div style={{ margin: '16px 0', borderTop: '1px dashed rgba(255, 255, 255, 0.2)' }} />
@@ -881,10 +981,11 @@ export default function TaxTracker({ user, isAuthorized }) {
                 <thead>
                   <tr style={{ background: '#f8fafc', textTransform: 'uppercase', fontSize: '0.72rem', color: '#64748b', letterSpacing: '0.04em' }}>
                     <th style={{ padding: '12px 14px', textAlign: 'left' }}>Earner</th>
+                    <th style={{ padding: '12px 14px', textAlign: 'left' }}>Company</th>
                     <th style={{ padding: '12px 14px', textAlign: 'right' }}>Basic Salary</th>
                     <th style={{ padding: '12px 14px', textAlign: 'right' }}>HRA Received</th>
                     <th style={{ padding: '12px 14px', textAlign: 'right' }}>Allowances</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>Gross Salary</th>
+                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>Gross Taxable Salary</th>
                     <th style={{ padding: '12px 14px', textAlign: 'right' }}>TDS Deducted</th>
                   </tr>
                 </thead>
@@ -892,6 +993,7 @@ export default function TaxTracker({ user, isAuthorized }) {
                   {taxData.salaries.map(s => (
                     <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '14px', fontWeight: 800, color: '#0f172a' }}>{s.earner}</td>
+                      <td style={{ padding: '14px', color: '#475569', fontWeight: 600 }}>{s.company || 'Corporate'}</td>
                       <td style={{ padding: '14px', textAlign: 'right' }}>₹{s.basicSalary?.toLocaleString('en-IN')}</td>
                       <td style={{ padding: '14px', textAlign: 'right' }}>₹{s.hraReceived?.toLocaleString('en-IN')}</td>
                       <td style={{ padding: '14px', textAlign: 'right' }}>₹{s.specialAllowance?.toLocaleString('en-IN')}</td>
@@ -981,29 +1083,6 @@ export default function TaxTracker({ user, isAuthorized }) {
         </div>
       )}
 
-      {/* ── TAB 5: FORM 16 & FILING CHECKLIST ── */}
-      {activeTab === 'documents' && (
-        <div style={{ background: '#ffffff', borderRadius: 20, padding: 24, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
-          <h3 style={{ margin: '0 0 16px', fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>ITR E-Filing Documents & Verification Vault</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
-            {taxData.documents.map(doc => (
-              <div key={doc.id} style={{ background: '#f8fafc', padding: 18, borderRadius: 16, border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <FileCheck size={22} color="#047857" />
-                  <div>
-                    <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.88rem' }}>{doc.title}</div>
-                    <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: 2 }}>Date: {doc.date}</div>
-                  </div>
-                </div>
-                <span style={{ background: '#dcfce7', color: '#16a34a', padding: '3px 10px', borderRadius: 99, fontSize: '0.72rem', fontWeight: 800 }}>
-                  {doc.status}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* ── Add Tax Deduction Modal ── */}
       {modalOpen && (
         <div style={{
@@ -1043,7 +1122,8 @@ export default function TaxTracker({ user, isAuthorized }) {
                 >
                   <option value="80C">Section 80C (EPF, PPF, ELSS, Tuition - Max ₹1.5L)</option>
                   <option value="80D">Section 80D (Health Insurance Premium)</option>
-                  <option value="80CCD(1B)">Section 80CCD(1B) (NPS Additional - Max ₹50k)</option>
+                  <option value="80CCD(1B)">Section 80CCD(1B) (NPS Additional Self - Max ₹50k)</option>
+                  <option value="80CCD(2)">Section 80CCD(2) (Employer NPS Contribution)</option>
                   <option value="Sec 24(b)">Section 24(b) (Home Loan Interest - Max ₹2.0L)</option>
                   <option value="Sec 10(13A)">Section 10(13A) (HRA Rent Exemption)</option>
                   <option value="80TTA">Section 80TTA (Savings Account Interest)</option>
