@@ -130,30 +130,40 @@ function calculateOldRegimeTax(taxableIncome) {
   return Math.round(tax * 1.04);
 }
 
-// Calculate New Regime Tax Liability (FY 2025-26 & FY 2026-27 Slabs)
+// Calculate New Regime Tax Liability — Union Budget 2025 (FY 2025-26 / AY 2026-27)
+// Slabs: 0-4L=Nil, 4-8L=5%, 8-12L=10%, 12-16L=15%, 16-20L=20%, 20-24L=25%, >24L=30%
+// Standard Deduction: ₹75,000 | Section 87A Rebate: Full waiver for taxable income ≤ ₹12,00,000
 function calculateNewRegimeTax(grossIncome, employerNps = 85596) {
-  let income = Math.max((grossIncome || 0) - 75000 - (employerNps || 0), 0);
-  if (income <= 300000) return 0;
-  if (income <= 700000) return 0; // Rebate 87A
+  let income = Math.max((grossIncome || 0) - 75000 - (employerNps || 0), 0); // Std Deduction ₹75k + Employer NPS 80CCD(2)
 
-  let tax = 20000; // 3L to 7L @ 5% (4,00,000 * 5%)
+  // Below basic exemption limit
+  if (income <= 400000) return 0;
 
-  if (income <= 1000000) {
-    tax += (income - 700000) * 0.10;
-  } else if (income <= 1200000) {
-    tax += 30000; // 30,000
-    tax += (income - 1000000) * 0.15;
-  } else if (income <= 1500000) {
-    tax += 30000; // 30,000
-    tax += 30000; // 30,000
-    tax += (income - 1200000) * 0.20;
-  } else {
-    tax += 30000; // 30,000
-    tax += 30000; // 30,000
-    tax += 60000; // 60,000
-    tax += (income - 1500000) * 0.30;
-  }
+  // Section 87A Rebate: Full tax waiver for taxable income up to ₹12,00,000
+  if (income <= 1200000) return 0;
 
+  // Compute tax slab-wise (no rebate since income > ₹12L)
+  let tax = 0;
+
+  // Slab 1: ₹4,00,001 – ₹8,00,000 @ 5%
+  tax += Math.min(Math.max(income - 400000, 0), 400000) * 0.05; // max ₹20,000
+
+  // Slab 2: ₹8,00,001 – ₹12,00,000 @ 10%
+  tax += Math.min(Math.max(income - 800000, 0), 400000) * 0.10; // max ₹40,000
+
+  // Slab 3: ₹12,00,001 – ₹16,00,000 @ 15%
+  tax += Math.min(Math.max(income - 1200000, 0), 400000) * 0.15; // max ₹60,000
+
+  // Slab 4: ₹16,00,001 – ₹20,00,000 @ 20%
+  tax += Math.min(Math.max(income - 1600000, 0), 400000) * 0.20; // max ₹80,000
+
+  // Slab 5: ₹20,00,001 – ₹24,00,000 @ 25%
+  tax += Math.min(Math.max(income - 2000000, 0), 400000) * 0.25; // max ₹1,00,000
+
+  // Slab 6: Above ₹24,00,000 @ 30%
+  tax += Math.max(income - 2400000, 0) * 0.30;
+
+  // 4% Health & Education Cess
   return Math.round(tax * 1.04);
 }
 
@@ -735,6 +745,26 @@ export default function TaxTracker({ user, isAuthorized }) {
           }}
         >
           <Briefcase size={15} /> Salary & Income
+        </button>
+
+        <button
+          onClick={() => setActiveTab('advance')}
+          style={{
+            padding: '9px 16px',
+            borderRadius: 12,
+            border: 'none',
+            background: activeTab === 'advance' ? '#047857' : 'transparent',
+            color: activeTab === 'advance' ? '#ffffff' : '#64748b',
+            fontWeight: 800,
+            fontSize: '0.85rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            whiteSpace: 'nowrap'
+          }}
+        >
+          <Calendar size={15} /> Advance Tax Schedule
         </button>
       </div>
 
