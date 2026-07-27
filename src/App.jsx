@@ -17,12 +17,15 @@ import AmishiActivity    from './components/organisms/AmishiActivity.jsx';
 import AmishiFees        from './components/organisms/AmishiFees.jsx';
 import AmishiProfile     from './components/organisms/AmishiProfile.jsx';
 import AmishiSyllabus    from './components/organisms/AmishiSyllabus.jsx';
+import AmishiVaccination from './components/organisms/AmishiVaccination.jsx';
 import DietPlan          from './components/organisms/DietPlan.jsx';
 import FamilyCalendar    from './components/organisms/FamilyCalendar.jsx';
 import CleaningSchedule  from './components/organisms/CleaningSchedule.jsx';
 import CombinedHealthDashboard from './components/organisms/CombinedHealthDashboard.jsx';
 import DocumentTracker from './components/organisms/DocumentTracker.jsx';
 import HealthMetrics from './components/organisms/HealthMetrics.jsx';
+import MnglTracker from './components/organisms/MnglTracker.jsx';
+import ElectricityTracker from './components/organisms/ElectricityTracker.jsx';
 import { db } from './firebase.js';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import AIChatButton from './components/organisms/AIChatButton.jsx';
@@ -139,6 +142,16 @@ const ICONS = {
       <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
     </svg>
   ),
+  mngl: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3.5z"/>
+    </svg>
+  ),
+  electricity: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+    </svg>
+  ),
 };
 
 /* ── No Mock fallback data ─────────────────────────────────────────── */
@@ -147,16 +160,19 @@ const ICONS = {
 const NAV = [
   { group: 'Home',   items: [{ id: 'overview',  label: 'Overview'       }] },
   { group: 'Finance',items: [
-    { id: 'finance',   label: 'Income & Expenses' },
-    { id: 'lending',   label: 'Money Lent' },
-    { id: 'wishlist',  label: 'Future Purchases' },
-    { id: 'portfolio', label: 'Investment Portfolio' }
+    { id: 'finance',     label: 'Income & Expenses' },
+    { id: 'mngl',        label: 'MNGL Gas Tracker', iconId: 'mngl' },
+    { id: 'electricity', label: 'Electricity Tracker', iconId: 'electricity' },
+    { id: 'lending',     label: 'Money Lent' },
+    { id: 'wishlist',    label: 'Future Purchases' },
+    { id: 'portfolio',   label: 'Investment Portfolio' }
   ] },
   { group: 'Health & Fitness', items: [
     { id: 'gymDiet', label: 'Gym & Diet', iconId: 'diet' },
     { id: 'healthMetrics', label: 'Vitals & Metrics', iconId: 'vitals' }
   ]},
   { group: 'Amishi', items: [
+    { id: 'vaccination', label: 'Vaccination Tracker', iconId: 'syringe' },
     { id: 'activity', label: 'Daily Activity' },
     { id: 'syllabus', label: 'Monthly Learning', iconId: 'syllabus' },
     { id: 'fees',     label: 'School Fees' },
@@ -341,6 +357,14 @@ export default function App() {
               <FinancePage isAuthorized={isAuthorized} user={user} />
             )}
 
+            {activeTab === 'mngl' && (
+              <MnglTracker isAuthorized={isAuthorized} user={user} />
+            )}
+
+            {activeTab === 'electricity' && (
+              <ElectricityTracker isAuthorized={isAuthorized} user={user} />
+            )}
+
 
             {activeTab === 'lending' && (
               <LendingTracker isAuthorized={isAuthorized} user={user} />
@@ -368,6 +392,10 @@ export default function App() {
 
             {activeTab === 'healthMetrics' && (
               <HealthMetrics />
+            )}
+
+            {activeTab === 'vaccination' && (
+              <AmishiVaccination user={user} isAuthorized={isAuthorized} />
             )}
 
             {activeTab === 'activity' && (

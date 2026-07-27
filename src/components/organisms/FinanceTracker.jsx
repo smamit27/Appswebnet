@@ -86,7 +86,7 @@ const fmtAmtDec = (v) => Number(v).toLocaleString('en-IN', { minimumFractionDigi
 const INR = '₹';
 
 export const INCOME_CATEGORIES = ['Salary', 'Freelance', 'Investments', 'Dividend', 'Interest', 'Rent Received', 'Business', 'Other Income'];
-export const EXPENSE_CATEGORIES = ['Food & Dining', 'Transport', 'Shopping', 'Bills & Utilities', 'Home Loan EMI', 'Investments', 'Credit Card Payment', 'House Help', 'Monthly Maintenance', 'Healthcare', 'Entertainment', 'Education', 'Others'];
+export const EXPENSE_CATEGORIES = ['Food & Dining', 'Milk/Paneer/Ghee', 'Mobile Recharge', 'Transport', 'Shopping', 'Bills & Utilities', 'Home Loan EMI', 'Investments', 'Credit Card Payment', 'House Help', 'Monthly Maintenance', 'Healthcare', 'Entertainment', 'Education', 'Others'];
 export const PAYMENT_METHODS = [
   'Amit HDFC Bank',
   'SBI Bank',
@@ -103,13 +103,13 @@ export const PAYMENT_METHODS = [
 const CATEGORY_ICONS = {
   'Salary': '💼', 'Freelance': '🖥️', 'Investments': '📈', 'Dividend': '🪙', 'Interest': '💸', 'Rent Received': '🏠',
   'Business': '🏢', 'Other Income': '💰',
-  'Food & Dining': '🍔', 'Transport': '🚗', 'Shopping': '🛍️',
+  'Food & Dining': '🍔', 'Milk/Paneer/Ghee': '🥛', 'Mobile Recharge': '📱', 'Transport': '🚗', 'Shopping': '🛍️',
   'Bills & Utilities': '⚡', 'Home Loan EMI': '🏦', 'Investments': '📈', 'Credit Card Payment': '💳', 'House Help': '🧹', 'Monthly Maintenance': '🛠️', 'Healthcare': '💊',
   'Entertainment': '🎬', 'Education': '📚', 'Others': '📦',
 };
 
 const CATEGORY_COLORS = {
-  'Food & Dining': '#FF6B6B', 'Transport': '#4ECDC4', 'Shopping': '#FFE66D',
+  'Food & Dining': '#FF6B6B', 'Milk/Paneer/Ghee': '#00CEC9', 'Mobile Recharge': '#fd79a8', 'Transport': '#4ECDC4', 'Shopping': '#FFE66D',
   'Bills & Utilities': '#A29BFE', 'Home Loan EMI': '#4a90e2', 'Investments': '#FDCB6E', 'Credit Card Payment': '#6c5ce7', 'House Help': '#e17055', 'Monthly Maintenance': '#e67e22', 'Healthcare': '#74B9FF',
   'Entertainment': '#FF7675', 'Education': '#55EFC4', 'Others': '#B2BEC3',
   'Salary': '#00B894', 'Freelance': '#6C5CE7', 'Investments': '#FDCB6E', 'Dividend': '#20bf6b', 'Interest': '#45aaf2',
@@ -868,6 +868,8 @@ export default function FinanceTracker({ person, personLabel, isAuthorized, user
   /* ── Budget (mock budgets) ── */
   const BUDGETS = {
     'Food & Dining': 10000,
+    'Milk/Paneer/Ghee': 4000,
+    'Mobile Recharge': 1500,
     'Transport': 5000,
     'Shopping': 8000,
     'Bills & Utilities': 4000,
