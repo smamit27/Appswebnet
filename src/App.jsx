@@ -26,6 +26,7 @@ import DocumentTracker from './components/organisms/DocumentTracker.jsx';
 import HealthMetrics from './components/organisms/HealthMetrics.jsx';
 import MnglTracker from './components/organisms/MnglTracker.jsx';
 import ElectricityTracker from './components/organisms/ElectricityTracker.jsx';
+import TaxTracker         from './components/organisms/TaxTracker.jsx';
 import { db } from './firebase.js';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import AIChatButton from './components/organisms/AIChatButton.jsx';
@@ -161,6 +162,7 @@ const NAV = [
   { group: 'Home',   items: [{ id: 'overview',  label: 'Overview'       }] },
   { group: 'Finance',items: [
     { id: 'finance',     label: 'Income & Expenses' },
+    { id: 'taxTracker',  label: 'Tax Tracking System', iconId: 'receipt' },
     { id: 'mngl',        label: 'MNGL Gas Tracker', iconId: 'mngl' },
     { id: 'electricity', label: 'Electricity Tracker', iconId: 'electricity' },
     { id: 'lending',     label: 'Money Lent' },
@@ -355,6 +357,10 @@ export default function App() {
 
             {activeTab === 'finance' && (
               <FinancePage isAuthorized={isAuthorized} user={user} />
+            )}
+
+            {activeTab === 'taxTracker' && (
+              <TaxTracker isAuthorized={isAuthorized} user={user} />
             )}
 
             {activeTab === 'mngl' && (
