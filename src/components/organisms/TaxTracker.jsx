@@ -432,7 +432,7 @@ export default function TaxTracker({ user, isAuthorized }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40, width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 40, width: '100%', maxWidth: '100%', boxSizing: 'border-box', minWidth: 0, overflow: 'hidden' }}>
       {/* ── Tax Tracker Hero Banner ── */}
       <div style={{
         background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #047857 100%)',
@@ -455,7 +455,7 @@ export default function TaxTracker({ user, isAuthorized }) {
           pointerEvents: 'none'
         }} />
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{
               width: 54,
@@ -519,7 +519,7 @@ export default function TaxTracker({ user, isAuthorized }) {
         </div>
 
         {/* Action Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginTop: 20, paddingTop: 14, borderTop: '1px solid rgba(255, 255, 255, 0.15)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginTop: 20, paddingTop: 14, borderTop: '1px solid rgba(255, 255, 255, 0.15)', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 700 }}>PRAN NO:</span>
             <span style={{ background: 'rgba(255, 255, 255, 0.15)', color: '#fef08a', padding: '3px 10px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 800 }}>
@@ -574,7 +574,7 @@ export default function TaxTracker({ user, isAuthorized }) {
       </div>
 
       {/* ── 4 Overview Key Metrics Cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, minWidth: 0 }}>
         {/* Total TEC Employment Cost */}
         <div style={{ background: '#ffffff', borderRadius: 18, padding: '18px', border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -646,7 +646,7 @@ export default function TaxTracker({ user, isAuthorized }) {
       </div>
 
       {/* ── Sub-Navigation Tabs ── */}
-      <div style={{ display: 'flex', gap: 10, borderBottom: '2px solid #e2e8f0', paddingBottom: 8, overflowX: 'auto' }}>
+      <div style={{ display: 'flex', gap: 8, borderBottom: '2px solid #e2e8f0', paddingBottom: 8, overflowX: 'auto', minWidth: 0, WebkitOverflowScrolling: 'touch' }}>
         <button
           onClick={() => setActiveTab('simulator')}
           style={{
@@ -770,9 +770,9 @@ export default function TaxTracker({ user, isAuthorized }) {
 
       {/* ── TAB: TAX SIMULATOR & WHAT-IF SCENARIO PLANNER ── */}
       {activeTab === 'simulator' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20, minWidth: 0 }}>
           {/* Left Sliders & Preset Selector */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
             {/* Presets */}
             <div style={{ background: '#ffffff', borderRadius: 18, padding: 18, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
               <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: 10 }}>
@@ -812,7 +812,7 @@ export default function TaxTracker({ user, isAuthorized }) {
 
               {/* Slider 1: Gross Annual Salary */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
                   <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Gross Annual Salary / Package</label>
                   <strong style={{ fontSize: '0.9rem', color: '#047857' }}>₹{(simGrossSalary / 100000).toFixed(2)} Lakhs</strong>
                 </div>
@@ -829,7 +829,7 @@ export default function TaxTracker({ user, isAuthorized }) {
 
               {/* Slider 2: Employer NPS % (Sec 80CCD(2)) */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
                   <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Employer NPS % (Sec 80CCD(2))</label>
                   <strong style={{ fontSize: '0.9rem', color: '#8b5cf6' }}>{simNpsPercent}% of Basic (₹{simResults.employerNpsAmt.toLocaleString('en-IN')})</strong>
                 </div>
@@ -847,7 +847,7 @@ export default function TaxTracker({ user, isAuthorized }) {
 
               {/* Slider 3: Section 80C */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
                   <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Section 80C (PPF, EPF, ELSS, Tuition)</label>
                   <strong style={{ fontSize: '0.9rem', color: '#0284c7' }}>₹{simSec80C.toLocaleString('en-IN')}</strong>
                 </div>
@@ -864,7 +864,7 @@ export default function TaxTracker({ user, isAuthorized }) {
 
               {/* Slider 4: Section 80D Health Insurance */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
                   <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Section 80D Health Insurance</label>
                   <strong style={{ fontSize: '0.9rem', color: '#0284c7' }}>₹{simSec80D.toLocaleString('en-IN')}</strong>
                 </div>
@@ -881,7 +881,7 @@ export default function TaxTracker({ user, isAuthorized }) {
 
               {/* Slider 5: Section 80CCD(1B) Self NPS */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
                   <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Section 80CCD(1B) Additional NPS</label>
                   <strong style={{ fontSize: '0.9rem', color: '#0284c7' }}>₹{simSec80CCD1B.toLocaleString('en-IN')}</strong>
                 </div>
@@ -898,7 +898,7 @@ export default function TaxTracker({ user, isAuthorized }) {
 
               {/* Slider 6: Section 24(b) Home Loan Interest */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
                   <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>Section 24(b) Home Loan Interest</label>
                   <strong style={{ fontSize: '0.9rem', color: '#0284c7' }}>₹{simSec24b.toLocaleString('en-IN')}</strong>
                 </div>
@@ -915,7 +915,7 @@ export default function TaxTracker({ user, isAuthorized }) {
 
               {/* Slider 7: Section 10(13A) HRA Exemption */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 4 }}>
                   <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>HRA Rent Exemption (Annual)</label>
                   <strong style={{ fontSize: '0.9rem', color: '#0284c7' }}>₹{simHraExemption.toLocaleString('en-IN')}</strong>
                 </div>
@@ -933,7 +933,7 @@ export default function TaxTracker({ user, isAuthorized }) {
           </div>
 
           {/* Right Live Computation Results Card */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
             <div style={{
               background: 'linear-gradient(135deg, #0f172a 0%, #047857 100%)',
               borderRadius: 22,
@@ -1075,8 +1075,8 @@ export default function TaxTracker({ user, isAuthorized }) {
 
       {/* ── TAB 1: OLD VS NEW REGIME COMPARISON ── */}
       {activeTab === 'regime' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20, minWidth: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
             <div style={{ background: '#ffffff', borderRadius: 18, padding: 20, border: '1px solid #e2e8f0', boxShadow: '0 4px 14px rgba(0,0,0,0.03)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                 <div>
@@ -1166,7 +1166,7 @@ export default function TaxTracker({ user, isAuthorized }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
             <div style={{
               background: 'linear-gradient(135deg, #047857 0%, #064e3b 100%)',
               borderRadius: 20,
