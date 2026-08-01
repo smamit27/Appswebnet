@@ -188,8 +188,7 @@ const NAV = [
     { id: 'portfolio',   label: 'Investment Portfolio' }
   ] },
   { group: 'Health & Fitness', items: [
-    { id: 'gymDiet', label: 'Gym & Diet', iconId: 'diet' },
-    { id: 'healthMetrics', label: 'Vitals & Metrics', iconId: 'vitals' }
+    { id: 'gymDiet', label: 'Gym & Diet', iconId: 'diet' }
   ]},
   { group: 'Amishi', items: [
     { id: 'vaccination', label: 'Vaccination Tracker', iconId: 'syringe' },
@@ -412,10 +411,6 @@ export default function App() {
                 swetaGymDelete={swetaGym.remove}
                 isAuthorized={isAuthorized}
               />
-            )}
-
-            {activeTab === 'healthMetrics' && (
-              <HealthMetrics />
             )}
 
             {activeTab === 'vaccination' && (
